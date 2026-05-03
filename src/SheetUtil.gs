@@ -1,4 +1,16 @@
 /**
+ * 「2026-05」形式の対象月文字列を返す。Date オブジェクトを Google Sheets が
+ * 勝手に作ってしまうケースに備えて、Date と string の両方を許容する。
+ */
+function normalizeYearMonth(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, 'JST', 'yyyy-MM');
+  }
+  return String(value).trim();
+}
+
+/**
  * スプレッドシート操作ユーティリティ
  */
 const SheetUtil = {
@@ -61,17 +73,42 @@ const SheetUtil = {
   },
 
   /**
-   * 行を末尾に追加
+   * 行を末尾に追加。既存行の数式列は数式をコピーして相対参照を維持する。
+   * 数式列を rowData で明示的に上書きしたい場合は、その列名を指定する。
    */
   appendRow: function(sheetName, rowData) {
     const sheet = this.getSheet(sheetName);
     const lastCol = sheet.getLastColumn();
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const oldLastRow = sheet.getLastRow();
+    const newRowIndex = oldLastRow + 1;
 
-    const row = headers.map(header => {
-      return rowData[header] !== undefined ? rowData[header] : '';
+    // 直前のデータ行から数式列を検出
+    const formulaColIndices = [];
+    if (oldLastRow >= 3) {
+      const formulas = sheet.getRange(oldLastRow, 1, 1, lastCol).getFormulas()[0];
+      formulas.forEach((f, i) => {
+        if (f) formulaColIndices.push(i);
+      });
+    }
+    const isFormulaCol = (i) => formulaColIndices.indexOf(i) !== -1;
+
+    // 値配列を構築。数式列はプレースホルダ '' (後で copyTo で埋める)
+    const rowValues = headers.map((header, i) => {
+      if (rowData[header] !== undefined) return rowData[header];
+      if (isFormulaCol(i)) return '';
+      return '';
     });
-    sheet.appendRow(row);
+
+    sheet.appendRow(rowValues);
+
+    // 数式列のうち、rowData で明示指定されていないものは前行から数式コピー
+    formulaColIndices.forEach(i => {
+      const header = headers[i];
+      if (rowData[header] === undefined) {
+        sheet.getRange(oldLastRow, i + 1).copyTo(sheet.getRange(newRowIndex, i + 1));
+      }
+    });
   },
 
   findRow: function(sheetName, columnName, value) {

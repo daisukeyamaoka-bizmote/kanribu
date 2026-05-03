@@ -14,6 +14,7 @@ function onOpen() {
         .addItem('オーナー入力フォームを開く', 'openInputForm')
         .addSeparator()
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
+        .addItem('請求データをリセット(復旧用)', 'resetAndRecreateMonthlyInvoiceRows')
         .addSeparator()
         .addItem('月初トリガーを登録(毎月1日9時)', 'installMonthlyInvoiceTrigger')
         .addItem('月初トリガーを解除', 'removeMonthlyInvoiceTrigger')

@@ -26,10 +26,10 @@ const InvoiceFlow = {
     }
 
     const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3)
-      .filter(c => c['ステータス'] === '稼働中');
+      .filter(c => String(c['ステータス'] || '').trim() === '稼働中');
 
     const existingRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .filter(r => r['対象月'] === yearMonth);
+      .filter(r => normalizeYearMonth(r['対象月']) === yearMonth);
     const existingClientIds = new Set(existingRows.map(r => r['クライアントID']));
 
     const baseSeq = existingRows.length;
@@ -62,6 +62,31 @@ const InvoiceFlow = {
       skipped: skipped,
       totalActiveClients: clients.length,
     };
+  },
+
+  /**
+   * 03_請求一覧 と 03b_請求明細 のデータ行を全削除(ヘッダー2行は残す)
+   * テストデータを汚した時の復旧用
+   * @return {object} 削除した行数
+   */
+  resetInvoiceData: function() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const result = { invoices: 0, lineItems: 0 };
+
+    const invSheet = ss.getSheetByName(this.INVOICE_SHEET);
+    if (invSheet && invSheet.getLastRow() >= 3) {
+      const num = invSheet.getLastRow() - 2;
+      invSheet.deleteRows(3, num);
+      result.invoices = num;
+    }
+
+    const lineSheet = ss.getSheetByName(this.LINE_ITEM_SHEET);
+    if (lineSheet && lineSheet.getLastRow() >= 3) {
+      const num = lineSheet.getLastRow() - 2;
+      lineSheet.deleteRows(3, num);
+      result.lineItems = num;
+    }
+    return result;
   },
 
   /**
@@ -191,4 +216,32 @@ function removeMonthlyInvoiceTrigger() {
     `${removed} 件のトリガーを解除しました。`,
     ui.ButtonSet.OK
   );
+}
+
+/**
+ * メニューから呼ばれる: 03_請求一覧 と 03b_請求明細 のデータをクリアして
+ * 当月分の請求行を再作成する(復旧用)
+ */
+function resetAndRecreateMonthlyInvoiceRows() {
+  const ui = SpreadsheetApp.getUi();
+  const confirm = ui.alert(
+    '請求データをリセット',
+    '03_請求一覧 と 03b_請求明細 の全データ行を削除し、当月の請求行6件を再作成します。\n\n' +
+    'この操作は元に戻せません。本当に実行しますか?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  try {
+    const reset = InvoiceFlow.resetInvoiceData();
+    const result = InvoiceFlow.createMonthlyInvoiceRows();
+    ui.alert(
+      'リセット&再作成 完了',
+      `削除: 03_請求一覧 ${reset.invoices}行, 03b_請求明細 ${reset.lineItems}行\n` +
+      `作成: ${result.added}件 (対象月: ${result.yearMonth})`,
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
 }

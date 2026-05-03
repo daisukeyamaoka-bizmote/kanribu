@@ -201,9 +201,17 @@
         return;
       }
 
-      invoices.forEach(inv => {
-        const card = createCard(inv);
-        content.appendChild(card);
+      invoices.forEach((inv, idx) => {
+        try {
+          const card = createCard(inv);
+          content.appendChild(card);
+        } catch (e) {
+          console.error('createCard failed for invoice', idx, inv, e);
+          const errDiv = document.createElement('div');
+          errDiv.className = 'error';
+          errDiv.textContent = 'カード生成エラー (' + (inv.invoiceId || '?') + '): ' + e.message;
+          content.appendChild(errDiv);
+        }
       });
     }
 
@@ -217,9 +225,10 @@
       card.className = 'card';
       card.dataset.invoiceId = inv.invoiceId;
 
+      const ym = String(inv.yearMonth || '').split('-');
       const subject = (inv.subjectTemplate || '')
-        .replace('{年}', inv.yearMonth.split('-')[0])
-        .replace('{月}', inv.yearMonth.split('-')[1]);
+        .replace('{年}', ym[0] || '')
+        .replace('{月}', ym[1] || '');
 
       const isRejected = inv.status === '差戻';
 

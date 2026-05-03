@@ -42,13 +42,14 @@ const InputFormApi = {
       })
       .map(r => {
         const client = clientMap[r['クライアントID']];
+        const yearMonth = normalizeYearMonth(r['対象月']);
         return {
           invoiceId: r['請求ID'],
-          yearMonth: r['対象月'],
+          yearMonth: yearMonth,
           clientId: r['クライアントID'],
           clientName: client['企業名'],
           subjectTemplate: client['件名テンプレ'] || '',
-          lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], r['対象月']),
+          lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], yearMonth),
           templates: this._getItemTemplates(r['クライアントID']),
           status: String(r['ステータス'] || '').trim(),
           memo: r['メモ'] || '',
@@ -133,9 +134,9 @@ const InputFormApi = {
    * 前月の同クライアントの明細を取得 (前月コピー機能用)
    */
   getLastMonthLineItems: function(clientId, currentYearMonth) {
-    const lastYearMonth = this._getLastYearMonth(currentYearMonth);
+    const lastYearMonth = this._getLastYearMonth(normalizeYearMonth(currentYearMonth));
     const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .find(r => r['クライアントID'] === clientId && r['対象月'] === lastYearMonth);
+      .find(r => r['クライアントID'] === clientId && normalizeYearMonth(r['対象月']) === lastYearMonth);
     if (!lastInvoice) return [];
 
     return SheetUtil.readAsObjects(this.LINE_ITEM_SHEET, 1, 3)
@@ -183,9 +184,9 @@ const InputFormApi = {
    * @private
    */
   _getLastMonthAmount: function(clientId, currentYearMonth) {
-    const lastYearMonth = this._getLastYearMonth(currentYearMonth);
+    const lastYearMonth = this._getLastYearMonth(normalizeYearMonth(currentYearMonth));
     const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .find(r => r['クライアントID'] === clientId && r['対象月'] === lastYearMonth);
+      .find(r => r['クライアントID'] === clientId && normalizeYearMonth(r['対象月']) === lastYearMonth);
     if (!lastInvoice) return 0;
     return Number(lastInvoice['税込金額']) || 0;
   },
