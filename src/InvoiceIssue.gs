@@ -223,10 +223,11 @@ const InvoiceIssue = {
       },
       lines: lines,
     };
-    // memo は空だと freee が400を返す(less_than_min_length)。
-    // 備考に値があるときだけ memo フィールドを追加する。
+    // freee の memo フィールドは「社内メモ」(PDF非表示)、
+    // 「備考」(PDFに印刷される) は notes フィールドに入る想定。
+    // 備考に値があるときだけ notes を追加する。
     if (preview.biko) {
-      payload.memo = preview.biko;
+      payload.notes = preview.biko;
     }
     return payload;
   },
