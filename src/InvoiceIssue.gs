@@ -186,13 +186,15 @@ const InvoiceIssue = {
 
     const lines = preview.lineItems.map((li, i) => {
       const subtotal = li.unitPrice * li.quantity;
+      const vat = Math.round(subtotal * (li.taxRate / 100));
       return {
         order: i + 1,
         // freee 新APIの type: 'item'(明細行) / 'text'(テキスト行)
         type: 'item',
-        qty: li.quantity,
-        unit_price: li.unitPrice,
-        vat: Math.round(subtotal * (li.taxRate / 100)),
+        // freee 請求書APIは数値フィールドを文字列で受け付ける
+        qty: String(li.quantity),
+        unit_price: String(li.unitPrice),
+        vat: String(vat),
         description: li.itemName,
         account_item_id: accountItemSales,
         tax_code: taxCode10,
