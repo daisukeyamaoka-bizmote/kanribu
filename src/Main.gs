@@ -38,6 +38,7 @@ function onOpen() {
         .addItem('8. 入力待ち請求を確認(デバッグ)', 'debugMyPendingInvoices')
         .addItem('9. freee 税率コード一覧を取得', 'fetchFreeeTaxCodes')
         .addItem('10. freee 勘定科目一覧を取得', 'fetchFreeeAccountItems')
+        .addItem('11. 設定値の正規化(TAX_CODE_10=129)', 'normalizeKnownConfig')
     )
     .addToUi();
 }
@@ -178,6 +179,31 @@ function fetchFreeeTaxCodes() {
   } catch (e) {
     ui.alert('エラー', e.message, ui.ButtonSet.OK);
   }
+}
+
+/**
+ * 既知のスクリプトプロパティを既定値で強制上書き
+ * Config.initialize() は既存値を保護する設計なので、
+ * 既存の誤った値(例: TAX_CODE_10=21) を直すための手段
+ */
+function normalizeKnownConfig() {
+  const ui = SpreadsheetApp.getUi();
+  const fixes = {
+    'TAX_CODE_10': '129',
+  };
+
+  let summary = '以下のスクリプトプロパティを上書きします:\n\n';
+  Object.keys(fixes).forEach(k => {
+    const cur = PropertiesService.getScriptProperties().getProperty(k);
+    summary += `${k}: 現在 "${cur}" → 新 "${fixes[k]}"\n`;
+  });
+  summary += '\n実行しますか?';
+
+  const result = ui.alert('設定値の正規化', summary, ui.ButtonSet.YES_NO);
+  if (result !== ui.Button.YES) return;
+
+  Object.keys(fixes).forEach(k => Config.set(k, fixes[k]));
+  ui.alert('完了', '正規化しました。再度「一括発行」をお試しください。', ui.ButtonSet.OK);
 }
 
 /**
