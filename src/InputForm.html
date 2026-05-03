@@ -31,38 +31,60 @@
     .meta { color: #666; font-size: 11px; margin: 4px 0 8px; }
     .items { margin-top: 8px; }
     .item-row {
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 6px;
+      background: #FAFAFA;
+    }
+    .item-name-row {
       display: flex;
       gap: 4px;
-      margin-bottom: 4px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .item-amount-row {
+      display: flex;
+      gap: 4px;
       align-items: center;
     }
     .item-row input {
       font-size: 12px;
-      padding: 4px 6px;
+      padding: 5px 6px;
       border: 1px solid #ccc;
       border-radius: 3px;
       min-width: 0;
     }
-    .item-name { flex: 2; }
-    .item-price { flex: 1; text-align: right; }
-    .item-qty { flex: 0 0 56px; text-align: right; }
+    .item-name { flex: 1 1 auto; }
+    .item-price {
+      flex: 1 1 auto;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .multiply { color: #888; padding: 0 2px; flex: 0 0 auto; }
+    .item-qty {
+      flex: 0 0 56px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .item-unit {
-      flex: 0 0 32px;
+      flex: 0 0 28px;
       color: #888;
       font-size: 11px;
-      text-align: left;
+      text-align: center;
     }
     .item-remove {
-      flex: 0 0 22px;
+      flex: 0 0 26px;
       background: transparent;
       border: 1px solid #ccc;
       color: #888;
-      padding: 2px 4px;
+      padding: 4px 0;
       cursor: pointer;
       border-radius: 3px;
-      font-size: 12px;
+      font-size: 13px;
+      line-height: 1;
     }
-    .item-remove:hover { background: #f5f5f5; color: #B00020; }
+    .item-remove:hover { background: #FFEBEE; color: #B00020; border-color: #B00020; }
     .add-row {
       background: transparent;
       border: 1px dashed #aaa;
@@ -270,11 +292,16 @@
       const row = document.createElement('div');
       row.className = 'item-row';
       row.innerHTML =
-        '<input type="text" class="item-name" placeholder="品目名" />' +
-        '<input type="number" class="item-price" placeholder="単価" min="0" />' +
-        '<input type="number" class="item-qty" placeholder="数量" min="0" step="any" />' +
-        '<span class="item-unit"></span>' +
-        '<button type="button" class="item-remove" title="この行を削除">×</button>';
+        '<div class="item-name-row">' +
+          '<input type="text" class="item-name" placeholder="品目名" />' +
+          '<button type="button" class="item-remove" title="この行を削除">×</button>' +
+        '</div>' +
+        '<div class="item-amount-row">' +
+          '<input type="number" class="item-price" placeholder="単価(税抜)" min="0" />' +
+          '<span class="multiply">×</span>' +
+          '<input type="number" class="item-qty" placeholder="数量" min="0" step="any" />' +
+          '<span class="item-unit"></span>' +
+        '</div>';
 
       row.querySelector('.item-name').value = item.itemName || '';
       row.querySelector('.item-price').value = item.unitPrice || '';
