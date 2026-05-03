@@ -192,9 +192,11 @@ const InvoiceIssue = {
         // freee 新APIの type: 'item'(明細行) / 'text'(テキスト行)
         type: 'item',
         // freee 請求書APIは数値フィールドを文字列で受け付ける
-        qty: String(li.quantity),
+        // 新APIでは qty → quantity, tax_code に加えて tax_rate も必要
+        quantity: String(li.quantity),
         unit_price: String(li.unitPrice),
         vat: String(vat),
+        tax_rate: li.taxRate,
         description: li.itemName,
         account_item_id: accountItemSales,
         tax_code: taxCode10,
