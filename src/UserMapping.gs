@@ -45,9 +45,10 @@ const UserMapping = {
    */
   getDisplayName: function(email) {
     if (!email) return null;
+    const target = String(email).trim().toLowerCase();
     const rows = SheetUtil.readAsObjects(this.SHEET_NAME, 1, 3);
-    const match = rows.find(r => String(r['メール']).trim().toLowerCase() === String(email).trim().toLowerCase());
-    return match ? match['表示名'] : null;
+    const match = rows.find(r => String(r['メール'] || '').trim().toLowerCase() === target);
+    return match ? String(match['表示名'] || '').trim() : null;
   },
 
   /**

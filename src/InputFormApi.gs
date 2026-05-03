@@ -20,19 +20,25 @@ const InputFormApi = {
     const ownerName = UserMapping.getDisplayName(userEmail);
     if (!ownerName) {
       throw new Error(
-        `ユーザ ${userEmail} がマッピングに登録されていません。\n` +
-        `99b_ユーザマッピング シートに行を追加してください。`
+        `ユーザ "${userEmail}" がマッピングに登録されていません。\n` +
+        `99b_ユーザマッピング シートに行を追加してください。\n` +
+        `(空欄の場合: GASで Session.getActiveUser().getEmail() が空文字を返しています。Apps Script の権限を再承認してください。)`
       );
     }
 
     const clientMap = this._loadClientMap();
     const rows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .filter(r => ['未入力', '差戻'].indexOf(r['ステータス']) !== -1);
+      .filter(r => {
+        const status = String(r['ステータス'] || '').trim();
+        return status === '未入力' || status === '差戻';
+      });
 
-    return rows
+    const result = rows
       .filter(r => {
         const client = clientMap[r['クライアントID']];
-        return client && client['案件オーナー'] === ownerName;
+        if (!client) return false;
+        const owner = String(client['案件オーナー'] || '').trim();
+        return owner === ownerName;
       })
       .map(r => {
         const client = clientMap[r['クライアントID']];
@@ -44,10 +50,14 @@ const InputFormApi = {
           subjectTemplate: client['件名テンプレ'] || '',
           lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], r['対象月']),
           templates: this._getItemTemplates(r['クライアントID']),
-          status: r['ステータス'],
+          status: String(r['ステータス'] || '').trim(),
           memo: r['メモ'] || '',
         };
       });
+
+    Logger.log(`getMyPendingInvoices: email=${userEmail}, owner=${ownerName}, ` +
+               `pending(全体)=${rows.length}, mine=${result.length}`);
+    return result;
   },
 
   /**

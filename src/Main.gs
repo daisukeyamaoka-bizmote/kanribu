@@ -28,6 +28,8 @@ function onOpen() {
         .addItem('5. freee接続テスト', 'testFreeeConnection')
         .addItem('6. クライアントマスタ確認', 'testReadClientMaster')
         .addItem('7. 過去請求一覧取得', 'testListInvoices')
+        .addSeparator()
+        .addItem('8. 入力待ち請求を確認(デバッグ)', 'debugMyPendingInvoices')
     )
     .addToUi();
 }
@@ -60,6 +62,41 @@ function openInputForm() {
   const html = HtmlService.createHtmlOutputFromFile('InputForm')
     .setTitle('請求金額入力');
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * メニューから呼ばれる: 入力フォームのデータ取得をデバッグ用に直接実行して結果を表示
+ */
+function debugMyPendingInvoices() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const email = Session.getActiveUser().getEmail();
+    const owner = UserMapping.getDisplayName(email);
+    const allInvoices = SheetUtil.readAsObjects('03_請求一覧', 1, 3);
+    const pending = allInvoices.filter(r => {
+      const status = String(r['ステータス'] || '').trim();
+      return status === '未入力' || status === '差戻';
+    });
+    const mine = InputFormApi.getMyPendingInvoices();
+
+    let msg = `現在のユーザ\n  メール: "${email}"\n  表示名: "${owner || '(マッピング未登録)'}"\n\n` +
+              `03_請求一覧 全体: ${allInvoices.length}行\n` +
+              `うち未入力/差戻: ${pending.length}行\n` +
+              `うち自分担当(${owner || '不明'}): ${mine.length}行\n\n`;
+
+    if (pending.length > 0) {
+      msg += '未入力/差戻の内訳:\n';
+      pending.slice(0, 10).forEach(p => {
+        msg += `  - ${p['請求ID']} | ${p['対象月']} | ${p['クライアントID']} | ${p['ステータス']}\n`;
+      });
+    }
+
+    Logger.log(msg);
+    ui.alert('入力待ち請求デバッグ', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    Logger.log(`debugエラー: ${e.message}\n${e.stack}`);
+    ui.alert('デバッグエラー', e.message, ui.ButtonSet.OK);
+  }
 }
 
 function testFreeeConnection() {
