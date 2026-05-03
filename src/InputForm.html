@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      padding: 12px;
+      font-size: 13px;
+      margin: 0;
+      color: #222;
+      background: #fafafa;
+    }
+    .header {
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #1E3A5F;
+      font-size: 14px;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: white;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .client-name { font-weight: 600; font-size: 14px; }
+    .meta { color: #666; font-size: 11px; margin: 4px 0 8px; }
+    .items { margin-top: 8px; }
+    .item-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 4px;
+      align-items: center;
+    }
+    .item-row input {
+      font-size: 12px;
+      padding: 4px 6px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      min-width: 0;
+    }
+    .item-name { flex: 2; }
+    .item-price { flex: 1; text-align: right; }
+    .item-qty { flex: 0 0 56px; text-align: right; }
+    .item-unit {
+      flex: 0 0 32px;
+      color: #888;
+      font-size: 11px;
+      text-align: left;
+    }
+    .item-remove {
+      flex: 0 0 22px;
+      background: transparent;
+      border: 1px solid #ccc;
+      color: #888;
+      padding: 2px 4px;
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .item-remove:hover { background: #f5f5f5; color: #B00020; }
+    .add-row {
+      background: transparent;
+      border: 1px dashed #aaa;
+      color: #555;
+      padding: 4px 8px;
+      width: 100%;
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .add-row:hover { background: #f0f0f0; }
+    .total {
+      text-align: right;
+      font-weight: 600;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #eee;
+      font-size: 13px;
+    }
+    .total .with-tax {
+      color: #888;
+      font-size: 11px;
+      font-weight: normal;
+      margin-left: 8px;
+    }
+    .actions { display: flex; gap: 8px; margin-top: 10px; }
+    button {
+      background: #1E3A5F;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      flex: 1;
+      font-weight: 500;
+    }
+    button:hover { background: #2A4A70; }
+    button.copy { background: #888; }
+    button.copy:hover { background: #777; }
+    button:disabled {
+      background: #ccc !important;
+      cursor: not-allowed;
+    }
+    .empty {
+      color: #888;
+      text-align: center;
+      padding: 32px 16px;
+      background: white;
+      border-radius: 6px;
+      border: 1px dashed #ddd;
+    }
+    .error {
+      color: #B00020;
+      padding: 12px;
+      background: #FFEBEE;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .badge-rejected { background: #FFEBEE; color: #B00020; }
+    .memo {
+      background: #FFF8E1;
+      border-left: 3px solid #FFB300;
+      padding: 6px 8px;
+      font-size: 11px;
+      margin-top: 6px;
+      white-space: pre-wrap;
+    }
+    .reload {
+      background: transparent;
+      color: #1E3A5F;
+      border: none;
+      padding: 0;
+      font-size: 11px;
+      text-decoration: underline;
+      cursor: pointer;
+      flex: 0;
+      margin-left: 8px;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-row">
+    <div class="header" id="header">入力待ち請求</div>
+    <button class="reload" type="button" onclick="loadInvoices()">再読込</button>
+  </div>
+  <div id="loading">読み込み中...</div>
+  <div id="content"></div>
+
+  <script>
+    function loadInvoices() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('loading').textContent = '読み込み中...';
+      document.getElementById('content').innerHTML = '';
+
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(showError)
+        .getMyPendingInvoices();
+    }
+
+    function showError(err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').innerHTML =
+        '<div class="error">エラー: ' + escapeHtml(err.message) + '</div>';
+    }
+
+    function render(invoices) {
+      document.getElementById('loading').style.display = 'none';
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+
+      updateHeader(invoices.length);
+
+      if (invoices.length === 0) {
+        content.innerHTML = '<div class="empty">入力待ちの請求はありません</div>';
+        return;
+      }
+
+      invoices.forEach(inv => {
+        const card = createCard(inv);
+        content.appendChild(card);
+      });
+    }
+
+    function updateHeader(count) {
+      document.getElementById('header').textContent =
+        '入力待ち請求: ' + count + '件';
+    }
+
+    function createCard(inv) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.invoiceId = inv.invoiceId;
+
+      const subject = (inv.subjectTemplate || '')
+        .replace('{年}', inv.yearMonth.split('-')[0])
+        .replace('{月}', inv.yearMonth.split('-')[1]);
+
+      const isRejected = inv.status === '差戻';
+
+      card.innerHTML =
+        '<div class="client-name">' + escapeHtml(inv.clientName) +
+        (isRejected ? '<span class="badge badge-rejected">差戻</span>' : '') +
+        '</div>' +
+        '<div class="meta">' + escapeHtml(inv.yearMonth) + ' | ' + escapeHtml(subject) + '</div>' +
+        (isRejected && inv.memo ? '<div class="memo">' + escapeHtml(inv.memo) + '</div>' : '') +
+        '<div class="items"></div>' +
+        '<button type="button" class="add-row">+ 行を追加</button>' +
+        '<div class="total">' +
+          '小計(税抜): <span class="subtotal-display">¥0</span>' +
+          '<span class="with-tax">(税込: <span class="total-display">¥0</span>)</span>' +
+        '</div>' +
+        '<div class="actions">' +
+          '<button type="button" class="copy copy-last">前月コピー (¥' +
+            (inv.lastMonthAmount || 0).toLocaleString() + ')</button>' +
+          '<button type="button" class="submit">提出</button>' +
+        '</div>';
+
+      const itemsContainer = card.querySelector('.items');
+      const initial = (inv.templates && inv.templates.length > 0)
+        ? inv.templates
+        : [{ itemName: '', unitPrice: 0, quantity: 1, taxRate: 10, unit: '' }];
+      initial.forEach(t => itemsContainer.appendChild(createItemRow(t, card)));
+
+      card.querySelector('.add-row').addEventListener('click', () => {
+        itemsContainer.appendChild(createItemRow({ itemName: '', unitPrice: 0, quantity: 1, taxRate: 10, unit: '' }, card));
+      });
+      card.querySelector('.copy-last').addEventListener('click', () => copyLastMonth(card, inv));
+      card.querySelector('.submit').addEventListener('click', () => submit(card, inv));
+
+      updateTotal(card);
+      return card;
+    }
+
+    function createItemRow(item, card) {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.innerHTML =
+        '<input type="text" class="item-name" placeholder="品目名" />' +
+        '<input type="number" class="item-price" placeholder="単価" min="0" />' +
+        '<input type="number" class="item-qty" placeholder="数量" min="0" step="any" />' +
+        '<span class="item-unit"></span>' +
+        '<button type="button" class="item-remove" title="この行を削除">×</button>';
+
+      row.querySelector('.item-name').value = item.itemName || '';
+      row.querySelector('.item-price').value = item.unitPrice || '';
+      row.querySelector('.item-qty').value = (item.quantity !== undefined && item.quantity !== null) ? item.quantity : '';
+      row.querySelector('.item-unit').textContent = item.unit || '';
+
+      row.querySelectorAll('.item-price, .item-qty').forEach(input => {
+        input.addEventListener('input', () => updateTotal(card));
+      });
+      row.querySelector('.item-remove').addEventListener('click', () => {
+        row.remove();
+        updateTotal(card);
+      });
+      return row;
+    }
+
+    function updateTotal(card) {
+      let subtotal = 0;
+      card.querySelectorAll('.item-row').forEach(row => {
+        const price = Number(row.querySelector('.item-price').value || 0);
+        const qty = Number(row.querySelector('.item-qty').value || 0);
+        subtotal += price * qty;
+      });
+      const tax = Math.round(subtotal * 0.1);
+      const total = subtotal + tax;
+      card.querySelector('.subtotal-display').textContent = '¥' + subtotal.toLocaleString();
+      card.querySelector('.total-display').textContent = '¥' + total.toLocaleString();
+    }
+
+    function copyLastMonth(card, inv) {
+      const btn = card.querySelector('.copy-last');
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '取得中...';
+
+      google.script.run
+        .withSuccessHandler(items => {
+          if (!items || items.length === 0) {
+            btn.disabled = false;
+            btn.textContent = original;
+            alert('前月の明細が見つかりませんでした');
+            return;
+          }
+          const itemsContainer = card.querySelector('.items');
+          itemsContainer.innerHTML = '';
+          items.forEach(item => itemsContainer.appendChild(createItemRow(item, card)));
+          updateTotal(card);
+          btn.disabled = false;
+          btn.textContent = original;
+        })
+        .withFailureHandler(err => {
+          alert('前月コピーに失敗しました: ' + err.message);
+          btn.disabled = false;
+          btn.textContent = original;
+        })
+        .getLastMonthLineItems(inv.clientId, inv.yearMonth);
+    }
+
+    function submit(card, inv) {
+      const items = [];
+      card.querySelectorAll('.item-row').forEach(row => {
+        const name = row.querySelector('.item-name').value.trim();
+        const price = Number(row.querySelector('.item-price').value || 0);
+        const qty = Number(row.querySelector('.item-qty').value || 0);
+        if (name === '' && price === 0 && qty === 0) return;
+        items.push({ itemName: name, unitPrice: price, quantity: qty, taxRate: 10 });
+      });
+
+      if (items.length === 0) {
+        alert('明細が空です。最低1行入力してください。');
+        return;
+      }
+
+      const submitBtn = card.querySelector('.submit');
+      const copyBtn = card.querySelector('.copy-last');
+      submitBtn.disabled = true;
+      copyBtn.disabled = true;
+      const orig = submitBtn.textContent;
+      submitBtn.textContent = '送信中...';
+
+      google.script.run
+        .withSuccessHandler(result => {
+          card.remove();
+          const remaining = document.querySelectorAll('.card').length;
+          updateHeader(remaining);
+          if (remaining === 0) {
+            document.getElementById('content').innerHTML =
+              '<div class="empty">入力待ちの請求はありません</div>';
+          }
+        })
+        .withFailureHandler(err => {
+          alert('提出失敗: ' + err.message);
+          submitBtn.disabled = false;
+          copyBtn.disabled = false;
+          submitBtn.textContent = orig;
+        })
+        .submitInvoiceInput(inv.invoiceId, items);
+    }
+
+    function escapeHtml(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+
+    loadInvoices();
+  </script>
+</body>
+</html>

@@ -11,6 +11,8 @@ function onOpen() {
   ui.createMenu('請求管理')
     .addSubMenu(
       ui.createMenu('請求業務')
+        .addItem('オーナー入力フォームを開く', 'openInputForm')
+        .addSeparator()
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
         .addSeparator()
         .addItem('月初トリガーを登録(毎月1日9時)', 'installMonthlyInvoiceTrigger')
@@ -32,12 +34,16 @@ function onOpen() {
 
 function setupInitialConfig() {
   Config.initialize();
-  const sheetCreated = InvoiceFlow.ensureInvoiceLineSheet();
+  const lineSheetCreated = InvoiceFlow.ensureInvoiceLineSheet();
+  const mappingCreated = UserMapping.ensureSheet();
 
   let msg = 'スクリプトプロパティに設定値を保存しました。\n';
-  msg += sheetCreated
+  msg += lineSheetCreated
     ? '03b_請求明細 シートを新規作成しました。\n'
     : '03b_請求明細 シートは既に存在します。\n';
+  msg += mappingCreated
+    ? '99b_ユーザマッピング シートを新規作成しました。\n'
+    : '99b_ユーザマッピング シートは既に存在します。\n';
   msg += '\n未認証の場合は「2. freee認証開始」を実行してください。';
 
   SpreadsheetApp.getUi().alert(
@@ -45,6 +51,15 @@ function setupInitialConfig() {
     msg,
     SpreadsheetApp.getUi().ButtonSet.OK
   );
+}
+
+/**
+ * メニューから呼ばれる: オーナー入力フォーム(サイドバー)を開く
+ */
+function openInputForm() {
+  const html = HtmlService.createHtmlOutputFromFile('InputForm')
+    .setTitle('請求金額入力');
+  SpreadsheetApp.getUi().showSidebar(html);
 }
 
 function testFreeeConnection() {

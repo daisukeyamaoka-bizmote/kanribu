@@ -1,0 +1,218 @@
+/**
+ * オーナー入力フォーム (InputForm.html) の連携API
+ *
+ * HTML の google.script.run から呼ばれるグローバル関数群を
+ * このファイル下部にエクスポートする (関数名がそのままRPC名になる)。
+ */
+const InputFormApi = {
+  INVOICE_SHEET: '03_請求一覧',
+  LINE_ITEM_SHEET: '03b_請求明細',
+  CLIENT_MASTER_SHEET: '01_クライアントマスタ',
+  ITEM_TEMPLATE_SHEET: '02_品目テンプレート',
+
+  /**
+   * 現在のユーザの入力待ち請求を取得
+   * - 「未入力」「差戻」ステータスのみ
+   * - 案件オーナーが現在のユーザの表示名と一致するもののみ
+   */
+  getMyPendingInvoices: function() {
+    const userEmail = Session.getActiveUser().getEmail();
+    const ownerName = UserMapping.getDisplayName(userEmail);
+    if (!ownerName) {
+      throw new Error(
+        `ユーザ ${userEmail} がマッピングに登録されていません。\n` +
+        `99b_ユーザマッピング シートに行を追加してください。`
+      );
+    }
+
+    const clientMap = this._loadClientMap();
+    const rows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
+      .filter(r => ['未入力', '差戻'].indexOf(r['ステータス']) !== -1);
+
+    return rows
+      .filter(r => {
+        const client = clientMap[r['クライアントID']];
+        return client && client['案件オーナー'] === ownerName;
+      })
+      .map(r => {
+        const client = clientMap[r['クライアントID']];
+        return {
+          invoiceId: r['請求ID'],
+          yearMonth: r['対象月'],
+          clientId: r['クライアントID'],
+          clientName: client['企業名'],
+          subjectTemplate: client['件名テンプレ'] || '',
+          lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], r['対象月']),
+          templates: this._getItemTemplates(r['クライアントID']),
+          status: r['ステータス'],
+          memo: r['メモ'] || '',
+        };
+      });
+  },
+
+  /**
+   * 入力された明細を保存し、請求一覧のステータスを「入力済」に更新
+   * @param {string} invoiceId 例: INV-202605-001
+   * @param {Array<{itemName, unitPrice, quantity, taxRate}>} items
+   */
+  submitInvoiceInput: function(invoiceId, items) {
+    if (!invoiceId) throw new Error('請求IDが指定されていません');
+    if (!Array.isArray(items) || items.length === 0) throw new Error('明細が空です');
+
+    // 入力検証
+    const cleaned = items
+      .map(item => ({
+        itemName: String(item.itemName || '').trim(),
+        unitPrice: Number(item.unitPrice) || 0,
+        quantity: Number(item.quantity) || 0,
+        taxRate: Number(item.taxRate) || 10,
+      }))
+      .filter(item => item.itemName !== '' || item.unitPrice !== 0 || item.quantity !== 0);
+
+    if (cleaned.length === 0) throw new Error('有効な明細がありません');
+
+    // ロック取得 (同時提出防止)
+    const lock = LockService.getDocumentLock();
+    if (!lock.tryLock(10000)) throw new Error('他の処理が実行中です。少し時間を置いて再度お試しください。');
+
+    try {
+      const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
+      const row = allRows.find(r => r['請求ID'] === invoiceId);
+      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}`);
+      if (['未入力', '差戻'].indexOf(row['ステータス']) === -1) {
+        throw new Error(`既に処理済みです (現在のステータス: ${row['ステータス']})`);
+      }
+
+      const subtotal = cleaned.reduce((s, item) => s + item.unitPrice * item.quantity, 0);
+      const tax = Math.round(subtotal * 0.1);
+      const total = subtotal + tax;
+
+      // 既存明細を削除 (差戻からの再入力に対応)
+      this._deleteLineItems(invoiceId);
+
+      // 新しい明細を追加
+      cleaned.forEach((item, index) => {
+        SheetUtil.appendRow(this.LINE_ITEM_SHEET, {
+          '請求ID': invoiceId,
+          '行No': index + 1,
+          '品目名': item.itemName,
+          '単価(税抜)': item.unitPrice,
+          '数量': item.quantity,
+          '税率': item.taxRate,
+          '小計(税抜)': item.unitPrice * item.quantity,
+        });
+      });
+
+      // 請求一覧のステータスを更新
+      SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
+        '税抜金額': subtotal,
+        '消費税': tax,
+        '税込金額': total,
+        'ステータス': '入力済',
+        '入力者': Session.getActiveUser().getEmail(),
+        '入力日時': new Date(),
+      });
+
+      return { success: true, invoiceId: invoiceId, subtotal: subtotal, tax: tax, total: total };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
+  /**
+   * 前月の同クライアントの明細を取得 (前月コピー機能用)
+   */
+  getLastMonthLineItems: function(clientId, currentYearMonth) {
+    const lastYearMonth = this._getLastYearMonth(currentYearMonth);
+    const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
+      .find(r => r['クライアントID'] === clientId && r['対象月'] === lastYearMonth);
+    if (!lastInvoice) return [];
+
+    return SheetUtil.readAsObjects(this.LINE_ITEM_SHEET, 1, 3)
+      .filter(r => r['請求ID'] === lastInvoice['請求ID'])
+      .sort((a, b) => (Number(a['行No']) || 0) - (Number(b['行No']) || 0))
+      .map(r => ({
+        itemName: r['品目名'] || '',
+        unitPrice: Number(r['単価(税抜)']) || 0,
+        quantity: Number(r['数量']) || 0,
+        taxRate: Number(r['税率']) || 10,
+      }));
+  },
+
+  /**
+   * クライアントID → クライアント情報のマップを構築
+   * @private
+   */
+  _loadClientMap: function() {
+    const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3);
+    const map = {};
+    clients.forEach(c => map[c['クライアントID']] = c);
+    return map;
+  },
+
+  /**
+   * クライアントの品目テンプレートを取得 (行No順)
+   * @private
+   */
+  _getItemTemplates: function(clientId) {
+    return SheetUtil.readAsObjects(this.ITEM_TEMPLATE_SHEET, 1, 3)
+      .filter(r => r['クライアントID'] === clientId)
+      .sort((a, b) => (Number(a['行No']) || 0) - (Number(b['行No']) || 0))
+      .map(r => ({
+        itemName: r['品目名'] || '',
+        unitPrice: Number(r['単価(税抜)']) || 0,
+        quantity: Number(r['数量']) || 1,
+        taxRate: Number(r['税率']) || 10,
+        unit: r['単位'] || '',
+        kind: r['固定/変動'] || '',
+      }));
+  },
+
+  /**
+   * 前月の税込金額を取得 (なければ0)
+   * @private
+   */
+  _getLastMonthAmount: function(clientId, currentYearMonth) {
+    const lastYearMonth = this._getLastYearMonth(currentYearMonth);
+    const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
+      .find(r => r['クライアントID'] === clientId && r['対象月'] === lastYearMonth);
+    if (!lastInvoice) return 0;
+    return Number(lastInvoice['税込金額']) || 0;
+  },
+
+  /**
+   * yyyy-MM 形式の前月を返す
+   * @private
+   */
+  _getLastYearMonth: function(yearMonth) {
+    const parts = String(yearMonth).split('-');
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (m === 1) return `${y - 1}-12`;
+    return `${y}-${String(m - 1).padStart(2, '0')}`;
+  },
+
+  /**
+   * 指定の請求IDに紐づく 03b_請求明細 の行を全削除
+   * @private
+   */
+  _deleteLineItems: function(invoiceId) {
+    const sheet = SheetUtil.getSheet(this.LINE_ITEM_SHEET);
+    const rows = SheetUtil.readAsObjects(this.LINE_ITEM_SHEET, 1, 3);
+    const targetRows = rows.filter(r => r['請求ID'] === invoiceId);
+    targetRows.sort((a, b) => b._rowNumber - a._rowNumber).forEach(r => {
+      sheet.deleteRow(r._rowNumber);
+    });
+  },
+};
+
+// HTML から呼ばれるグローバル関数 (google.script.run RPC)
+function getMyPendingInvoices() {
+  return InputFormApi.getMyPendingInvoices();
+}
+function submitInvoiceInput(invoiceId, items) {
+  return InputFormApi.submitInvoiceInput(invoiceId, items);
+}
+function getLastMonthLineItems(clientId, currentYearMonth) {
+  return InputFormApi.getLastMonthLineItems(clientId, currentYearMonth);
+}
