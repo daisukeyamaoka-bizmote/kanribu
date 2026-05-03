@@ -137,23 +137,30 @@ const InvoiceIssue = {
     }
 
     const response = FreeeClient.createInvoice(payload);
-    if (!response || !response.id) {
-      throw new Error(`freee API レスポンスに id がありません: ${JSON.stringify(response)}`);
+    if (!response) throw new Error('freee API レスポンスが空です');
+
+    // 旧APIは {invoice: {id, deal_id, ...}} 、新APIは直接 {id, deal_id, ...} の可能性があるため両対応
+    const inv = response.invoice || response;
+    const freeeInvoiceId = inv.id;
+    const freeeDealId = inv.deal_id || (response.deal && response.deal.id) || '';
+
+    if (!freeeInvoiceId) {
+      throw new Error('freee API レスポンスから請求書ID を取得できません: ' + JSON.stringify(response).substring(0, 500));
     }
 
     SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
       'ステータス': '発行済',
-      'freee請求書ID': response.id,
-      'freee deal_id': response.deal_id || '',
+      'freee請求書ID': freeeInvoiceId,
+      'freee deal_id': freeeDealId,
     });
 
-    Logger.log(`発行成功 ${preview.invoiceId} → freee invoice ${response.id}, deal ${response.deal_id || '(none)'}`);
+    Logger.log(`発行成功 ${preview.invoiceId} → freee invoice ${freeeInvoiceId}, deal ${freeeDealId || '(none)'}`);
 
     return {
       invoiceId: preview.invoiceId,
       clientName: preview.clientName,
-      freeeInvoiceId: response.id,
-      freeeDealId: response.deal_id || null,
+      freeeInvoiceId: freeeInvoiceId,
+      freeeDealId: freeeDealId || null,
     };
   },
 
@@ -167,8 +174,13 @@ const InvoiceIssue = {
     const templateId = Config.getNumber('FREEE_INVOICE_TEMPLATE_ID');
     const accountItemSales = Config.getNumber('ACCOUNT_ITEM_SALES');
     const taxCode10 = Config.getNumber('TAX_CODE_10');
+    // 任意指定可能な設定 (スクリプトプロパティで上書き可)
+    const taxEntryMethod = Config.getOrDefault('TAX_ENTRY_METHOD', 'exclusive');
+    const taxFraction = Config.getOrDefault('TAX_FRACTION', 'round');
+    const withholdingTaxEntryMethod = Config.getOrDefault('WITHHOLDING_TAX_ENTRY_METHOD', 'off');
+    const partnerTitle = Config.getOrDefault('PARTNER_TITLE', '御中');
 
-    const invoiceContents = preview.lineItems.map((li, i) => {
+    const lines = preview.lineItems.map((li, i) => {
       const subtotal = li.unitPrice * li.quantity;
       return {
         order: i + 1,
@@ -185,19 +197,26 @@ const InvoiceIssue = {
     return {
       company_id: companyId,
       issue_date: preview.issueDate,
+      billing_date: preview.issueDate,
       due_date: preview.dueDate,
       partner_id: preview.partnerId,
+      partner_title: partnerTitle,
       subject: preview.subject,
       template_id: templateId,
+      tax_entry_method: taxEntryMethod,
+      tax_fraction: taxFraction,
+      withholding_tax_entry_method: withholdingTaxEntryMethod,
       deal_attributes: {
         create_deal: true,
         issue_date: preview.issueDate,
         due_date: preview.dueDate,
       },
-      invoice_contents: invoiceContents,
+      lines: lines,
     };
-    // 注: memo は空文字だと freee API が400を返す(less_than_min_length)。
-    //     省略すれば通るので、必要なときだけ呼び出し側で payload.memo を追加する。
+    // 注:
+    // - memo は空だと freee が400を返す(less_than_min_length)。必要時に呼び出し側で payload.memo を追加
+    // - tax_entry_method / tax_fraction / withholding_tax_entry_method / partner_title は
+    //   スクリプトプロパティで上書き可。デフォルトは exclusive / round / off / 御中
   },
 
   /**
