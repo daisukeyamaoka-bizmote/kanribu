@@ -175,7 +175,10 @@ const InvoiceIssue = {
     const accountItemSales = Config.getNumber('ACCOUNT_ITEM_SALES');
     const taxCode10 = Config.getNumber('TAX_CODE_10');
     // 任意指定可能な設定 (スクリプトプロパティで上書き可)
-    const taxEntryMethod = Config.getOrDefault('TAX_ENTRY_METHOD', 'exclusive');
+    // tax_entry_method: 'in' (内税) / 'out' (外税) — bizmote は税抜入力なので 'out'
+    // tax_fraction:     'round' (四捨五入) / 'truncate' (切捨) / 'ceil' (切上)
+    // withholding_tax_entry_method: 'on' (源泉徴収あり) / 'off' (なし)
+    const taxEntryMethod = Config.getOrDefault('TAX_ENTRY_METHOD', 'out');
     const taxFraction = Config.getOrDefault('TAX_FRACTION', 'round');
     const withholdingTaxEntryMethod = Config.getOrDefault('WITHHOLDING_TAX_ENTRY_METHOD', 'off');
     const partnerTitle = Config.getOrDefault('PARTNER_TITLE', '御中');
