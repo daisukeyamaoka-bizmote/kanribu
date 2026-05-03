@@ -15,7 +15,7 @@ const Config = {
       'FREEE_INVOICE_TEMPLATE_ID': '1525088',
       'ACCOUNT_ITEM_SALES': '719439131',
       'ACCOUNT_ITEM_RECEIVABLE': '719438988',
-      'TAX_CODE_10': '21',
+      'TAX_CODE_10': '129',
       // freee OAuthクレデンシャル
       'FREEE_CLIENT_ID': '719693591028212',
       'FREEE_CLIENT_SECRET': 'HiyIvSKAqpv8FW9RFjYxpPEN7rpht3HZWGxED79xx_puGtX8M1hNuc-fztHbgio8zw1dI6Ff5qd_hP_DXNl3kw',
