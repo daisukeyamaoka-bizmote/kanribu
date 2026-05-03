@@ -43,7 +43,11 @@ const InvoiceIssue = {
           subtotal: Number(li['小計(税抜)']) || 0,
         }));
 
-      const issueDate = this._lastDayOfMonth(yearMonth);
+      // 請求日 = 作成日(今日 JST)
+      // 請求対象期間の最終日 = 対象月末
+      // 入金期日 = 翌月末 (or 支払サイトに「翌々月」が含まれていれば翌々月末)
+      const today = new Date();
+      const billingPeriodEnd = this._lastDayOfMonth(yearMonth);
       const dueDate = this._dueDateFromTerms(yearMonth, client['支払サイト']);
 
       return {
@@ -57,7 +61,8 @@ const InvoiceIssue = {
         subtotal: Number(r['税抜金額']) || 0,
         tax: Number(r['消費税']) || 0,
         total: Number(r['税込金額']) || 0,
-        issueDate: Utilities.formatDate(issueDate, 'JST', 'yyyy-MM-dd'),
+        issueDate: Utilities.formatDate(today, 'JST', 'yyyy-MM-dd'),
+        billingDate: Utilities.formatDate(billingPeriodEnd, 'JST', 'yyyy-MM-dd'),
         dueDate: Utilities.formatDate(dueDate, 'JST', 'yyyy-MM-dd'),
         lineItems: lineItems,
         biko: String(r['備考'] || '').trim(),
@@ -206,9 +211,10 @@ const InvoiceIssue = {
 
     const payload = {
       company_id: companyId,
-      issue_date: preview.issueDate,
-      billing_date: preview.issueDate,
-      due_date: preview.dueDate,
+      issue_date: preview.issueDate,           // 請求日 = 作成日(今日)
+      billing_date: preview.billingDate,       // 請求対象期間 = 対象月末
+      due_date: preview.dueDate,               // 入金期日 = 翌月末
+      payment_date: preview.dueDate,           // freee は payment_date でも入金期日を解釈する想定 (両方送っておく)
       partner_id: preview.partnerId,
       partner_title: partnerTitle,
       subject: preview.subject,
