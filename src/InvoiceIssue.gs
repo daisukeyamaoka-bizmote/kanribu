@@ -211,8 +211,8 @@ const InvoiceIssue = {
 
     const payload = {
       company_id: companyId,
-      issue_date: preview.issueDate,           // 請求日 = 作成日(今日)
-      billing_date: preview.billingDate,       // 請求対象期間 = 対象月末
+      issue_date: preview.issueDate,           // 発行日(今日)
+      billing_date: preview.issueDate,         // 請求日 = 今日(freeeが請求日として表示するのはこのフィールド)
       due_date: preview.dueDate,               // 入金期日 = 翌月末
       payment_date: preview.dueDate,           // freee は payment_date でも入金期日を解釈する想定 (両方送っておく)
       partner_id: preview.partnerId,
@@ -229,11 +229,13 @@ const InvoiceIssue = {
       },
       lines: lines,
     };
-    // freee の memo フィールドは「社内メモ」(PDF非表示)、
-    // 「備考」(PDFに印刷される) は notes フィールドに入る想定。
-    // 備考に値があるときだけ notes を追加する。
+    // freee の memo フィールドは「社内メモ」(PDF非表示)。
+    // 「備考」(PDFに印刷される) はフィールド名が不明なため、
+    // 候補をすべて埋めて、freee に拾われた方が反映されることを期待する。
     if (preview.biko) {
       payload.notes = preview.biko;
+      payload.description = preview.biko;
+      payload.remarks = preview.biko;
     }
     return payload;
   },
