@@ -88,12 +88,31 @@ const FreeeClient = {
   },
 
   /**
-   * 請求書をfreeeから取引先にメール送信させる (freee内部の送付機能を使う)
-   * @param {object} payload - sendings API の本体
-   * @return {object} レスポンス
+   * 請求書PDFをダウンロード(バイナリ)
+   * @param {number|string} freeeInvoiceId
+   * @return {Blob} PDFバイナリ
    */
-  sendInvoice: function(payload) {
-    return this.request('invoice', 'POST', '/sendings', payload);
+  downloadInvoicePdf: function(freeeInvoiceId) {
+    const companyId = Config.get('FREEE_COMPANY_ID');
+    const url = this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/download?company_id=${companyId}`;
+    const token = FreeeOAuth.getAccessToken();
+
+    const response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+      },
+      muteHttpExceptions: true,
+    });
+
+    const code = response.getResponseCode();
+    if (code >= 400) {
+      const body = response.getContentText().substring(0, 500);
+      throw new Error(`freee PDFダウンロード失敗 HTTP ${code}: ${body}`);
+    }
+
+    Utilities.sleep(200);
+    return response.getBlob().setContentType('application/pdf');
   },
 
   listDeals: function(opts) {
