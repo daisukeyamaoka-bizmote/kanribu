@@ -177,10 +177,11 @@ const InvoiceIssue = {
     // 任意指定可能な設定 (スクリプトプロパティで上書き可)
     // tax_entry_method: 'in' (内税) / 'out' (外税) — bizmote は税抜入力なので 'out'
     // tax_fraction:     'round' (四捨五入) / 'truncate' (切捨) / 'ceil' (切上)
-    // withholding_tax_entry_method: 'on' (源泉徴収あり) / 'off' (なし)
+    // withholding_tax_entry_method: 'in' / 'out' (源泉徴収の表示方式)
+    //   bizmote は源泉徴収なし(B2B) のため、どちらでも金額は0になるが 'out' を既定に
     const taxEntryMethod = Config.getOrDefault('TAX_ENTRY_METHOD', 'out');
     const taxFraction = Config.getOrDefault('TAX_FRACTION', 'round');
-    const withholdingTaxEntryMethod = Config.getOrDefault('WITHHOLDING_TAX_ENTRY_METHOD', 'off');
+    const withholdingTaxEntryMethod = Config.getOrDefault('WITHHOLDING_TAX_ENTRY_METHOD', 'out');
     const partnerTitle = Config.getOrDefault('PARTNER_TITLE', '御中');
 
     const lines = preview.lineItems.map((li, i) => {
