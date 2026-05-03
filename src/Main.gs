@@ -17,6 +17,7 @@ function onOpen() {
         .addItem('発行プレビュー(承認済の確認)', 'previewApprovedIssuance')
         .addItem('一括発行(ドライラン)', 'dryRunIssueApproved')
         .addItem('一括発行(本番・freee連携)', 'bulkIssueApproved')
+        .addItem('発行済の請求書PDFをDriveに保存', 'saveInvoicePdfs')
         .addSeparator()
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
         .addItem('請求データをリセット(復旧用)', 'resetAndRecreateMonthlyInvoiceRows')

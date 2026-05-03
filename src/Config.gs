@@ -24,6 +24,8 @@ const Config = {
       'COMPANY_ZIP': '160-0023',
       'COMPANY_ADDRESS': '東京都新宿区西新宿4-8-11 SHINJUKU NEW VILLA 203',
       'BANK_INFO': 'GMOあおぞらネット銀行 法人営業部 普通 1663349',
+      // PDF保存先 Drive フォルダ (請求書_請求分)
+      'PDF_DRIVE_FOLDER_ID': '1zCfE9PI4CD5l_yGZ9NYZF87oV_Bp5o_A',
     };
 
     Object.keys(defaults).forEach(key => {

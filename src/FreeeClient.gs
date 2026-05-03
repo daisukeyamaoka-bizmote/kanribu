@@ -87,6 +87,34 @@ const FreeeClient = {
     return data.invoice;
   },
 
+  /**
+   * 請求書PDFをダウンロード(バイナリ)
+   * @param {number|string} freeeInvoiceId
+   * @return {Blob} PDFバイナリ
+   */
+  downloadInvoicePdf: function(freeeInvoiceId) {
+    const companyId = Config.get('FREEE_COMPANY_ID');
+    const url = this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/download?company_id=${companyId}`;
+    const token = FreeeOAuth.getAccessToken();
+
+    const response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+      },
+      muteHttpExceptions: true,
+    });
+
+    const code = response.getResponseCode();
+    if (code >= 400) {
+      const body = response.getContentText().substring(0, 500);
+      throw new Error(`freee PDFダウンロード失敗 HTTP ${code}: ${body}`);
+    }
+
+    Utilities.sleep(200);
+    return response.getBlob().setContentType('application/pdf');
+  },
+
   listDeals: function(opts) {
     opts = opts || {};
     const companyId = Config.get('FREEE_COMPANY_ID');
