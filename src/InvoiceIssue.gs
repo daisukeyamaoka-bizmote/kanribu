@@ -188,7 +188,6 @@ const InvoiceIssue = {
       due_date: preview.dueDate,
       partner_id: preview.partnerId,
       subject: preview.subject,
-      memo: '',
       template_id: templateId,
       deal_attributes: {
         create_deal: true,
@@ -197,6 +196,8 @@ const InvoiceIssue = {
       },
       invoice_contents: invoiceContents,
     };
+    // 注: memo は空文字だと freee API が400を返す(less_than_min_length)。
+    //     省略すれば通るので、必要なときだけ呼び出し側で payload.memo を追加する。
   },
 
   /**
@@ -347,17 +348,20 @@ function bulkIssueApproved() {
 
   try {
     const result = InvoiceIssue.issueAllApproved(false);
-    let msg = `発行完了\n\n` +
-              `対象: ${result.total}件\n` +
+    const allFailed = result.issued.length === 0 && result.failed.length > 0;
+    const allOk = result.failed.length === 0 && result.issued.length > 0;
+    const title = allFailed ? '一括発行 失敗' : (allOk ? '一括発行 完了' : '一括発行 一部成功');
+
+    let msg = `対象: ${result.total}件\n` +
               `成功: ${result.issued.length}件\n` +
               `失敗: ${result.failed.length}件`;
-    if (result.failed.length > 0) {
-      msg += '\n\n失敗内訳:\n' + result.failed.map(f => `- ${f.clientName} (${f.invoiceId}): ${f.error}`).join('\n');
-    }
     if (result.issued.length > 0) {
       msg += '\n\n発行成功:\n' + result.issued.map(i => `- ${i.clientName}: freee請求書ID ${i.freeeInvoiceId}`).join('\n');
     }
-    ui.alert('一括発行 結果', msg, ui.ButtonSet.OK);
+    if (result.failed.length > 0) {
+      msg += '\n\n失敗内訳:\n' + result.failed.map(f => `- ${f.clientName} (${f.invoiceId}): ${f.error}`).join('\n');
+    }
+    ui.alert(title, msg, ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('一括発行 エラー', e.message, ui.ButtonSet.OK);
   }
