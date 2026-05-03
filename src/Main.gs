@@ -36,6 +36,8 @@ function onOpen() {
         .addItem('7. 過去請求一覧取得', 'testListInvoices')
         .addSeparator()
         .addItem('8. 入力待ち請求を確認(デバッグ)', 'debugMyPendingInvoices')
+        .addItem('9. freee 税率コード一覧を取得', 'fetchFreeeTaxCodes')
+        .addItem('10. freee 勘定科目一覧を取得', 'fetchFreeeAccountItems')
     )
     .addToUi();
 }
@@ -152,6 +154,53 @@ function testReadClientMaster() {
     );
   } catch (e) {
     SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * freee 税率コード一覧を取得して表示 (発行時の tax_code 確認用)
+ */
+function fetchFreeeTaxCodes() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const data = FreeeClient.request('accounting', 'GET', '/api/1/taxes/codes');
+    const codes = data.taxes || data.tax_codes || data || [];
+    Logger.log('税率コード生レスポンス:\n' + JSON.stringify(data, null, 2));
+
+    let msg = '取得した税率コード (上位30件):\n\n';
+    const list = Array.isArray(codes) ? codes : [];
+    list.slice(0, 30).forEach(c => {
+      msg += `code: ${c.code} | ${c.name_ja || c.name || ''} | rate: ${c.rate || c.display_category || ''}\n`;
+    });
+    msg += '\n10%課税売上のcodeを見つけて、スクリプトプロパティ TAX_CODE_10 に設定してください。';
+    msg += '\n詳細は実行ログを確認。';
+    ui.alert('freee 税率コード', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * freee 勘定科目一覧を取得して表示 (発行時の account_item_id 確認用)
+ */
+function fetchFreeeAccountItems() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const companyId = Config.get('FREEE_COMPANY_ID');
+    const data = FreeeClient.request('accounting', 'GET', `/api/1/account_items?company_id=${companyId}`);
+    const items = data.account_items || [];
+    Logger.log('勘定科目 件数: ' + items.length);
+
+    // 売上関連のみ抽出
+    const sales = items.filter(a => /売上|役務収益|売掛/.test(a.name || ''));
+    let msg = `勘定科目 全 ${items.length}件 (売上系を抽出):\n\n`;
+    sales.forEach(a => {
+      msg += `id: ${a.id} | ${a.name}\n`;
+    });
+    msg += '\n詳細は実行ログを確認。';
+    ui.alert('freee 勘定科目', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
   }
 }
 
