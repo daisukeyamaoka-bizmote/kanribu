@@ -44,6 +44,7 @@ function onOpen() {
         .addItem('10. freee 勘定科目一覧を取得', 'fetchFreeeAccountItems')
         .addItem('11. 設定値の正規化(TAX_CODE_10=129)', 'normalizeKnownConfig')
         .addItem('12. freee請求書詳細を取得(ID指定)', 'fetchFreeeInvoiceDetail')
+        .addItem('13. freee請求書詳細を取得(選択行)', 'fetchFreeeInvoiceDetailFromRow')
     )
     .addToUi();
 }
@@ -216,6 +217,67 @@ function normalizeKnownConfig() {
 }
 
 /**
+ * 03_請求一覧 シートで現在選択している行の freee請求書ID を使って詳細取得
+ */
+function fetchFreeeInvoiceDetailFromRow() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    if (sheet.getName() !== '03_請求一覧') {
+      ui.alert('実行先エラー', '03_請求一覧 シートを開いてから、対象の行をクリックして実行してください。', ui.ButtonSet.OK);
+      return;
+    }
+    const row = sheet.getActiveRange().getRow();
+    if (row < 3) {
+      ui.alert('行選択エラー', 'データ行(3行目以降)を選択してください。', ui.ButtonSet.OK);
+      return;
+    }
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const idCol = headers.indexOf('freee請求書ID');
+    if (idCol < 0) {
+      ui.alert('列エラー', 'freee請求書ID 列が見つかりません。', ui.ButtonSet.OK);
+      return;
+    }
+    const id = sheet.getRange(row, idCol + 1).getValue();
+    if (!id) {
+      ui.alert('ID未設定', '選択行に freee請求書ID がありません(まだ発行されていない?)。', ui.ButtonSet.OK);
+      return;
+    }
+    _showFreeeInvoiceDetail(String(id), ui);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+function _showFreeeInvoiceDetail(id, ui) {
+  const companyId = Config.get('FREEE_COMPANY_ID');
+  const data = FreeeClient.request('invoice', 'GET', `/invoices/${id}?company_id=${companyId}`);
+  const inv = data.invoice || data;
+
+  const candidateKeys = ['memo', 'notes', 'description', 'remarks', 'caption', 'comment', 'note', 'description_at_bottom', 'bottom_text'];
+  let summary = `freee請求書 ID: ${id}\n\n`;
+  summary += '備考っぽいフィールドの値:\n';
+  candidateKeys.forEach(k => {
+    const v = inv[k];
+    if (v !== undefined) {
+      summary += `  ${k}: "${String(v).substring(0, 200)}"\n`;
+    }
+  });
+
+  // 主要日付フィールドも併せて確認
+  summary += '\n日付フィールド:\n';
+  ['issue_date', 'billing_date', 'due_date', 'payment_date'].forEach(k => {
+    if (inv[k] !== undefined) summary += `  ${k}: ${inv[k]}\n`;
+  });
+
+  summary += '\n全フィールド一覧(キーのみ):\n';
+  summary += Object.keys(inv).join(', ');
+
+  Logger.log('freee invoice raw response:\n' + JSON.stringify(data, null, 2));
+  ui.alert('freee請求書詳細', summary, ui.ButtonSet.OK);
+}
+
+/**
  * freee 請求書詳細を取得して全フィールドを実行ログに出力
  * 「備考」がどのフィールドに対応するかを確認するための診断用
  */
@@ -223,7 +285,8 @@ function fetchFreeeInvoiceDetail() {
   const ui = SpreadsheetApp.getUi();
   const response = ui.prompt(
     'freee請求書詳細取得',
-    'freee請求書ID(数値)を入力してください\n例: 57817407',
+    'freee請求書ID(数値、例: 57817407)を入力してください\n' +
+    '※INV-xxxxx のような表示用番号ではなく、03_請求一覧の「freee請求書ID」列の数値です',
     ui.ButtonSet.OK_CANCEL
   );
   if (response.getSelectedButton() !== ui.Button.OK) return;
@@ -231,26 +294,7 @@ function fetchFreeeInvoiceDetail() {
   if (!id) return;
 
   try {
-    const companyId = Config.get('FREEE_COMPANY_ID');
-    const data = FreeeClient.request('invoice', 'GET', `/invoices/${id}?company_id=${companyId}`);
-    const inv = data.invoice || data;
-
-    // memo / notes / description / remarks など、備考っぽいフィールドを抽出
-    const candidateKeys = ['memo', 'notes', 'description', 'remarks', 'caption', 'comment', 'note'];
-    let summary = `freee請求書 ID: ${id}\n\n`;
-    summary += '備考っぽいフィールドの値:\n';
-    candidateKeys.forEach(k => {
-      const v = inv[k];
-      if (v !== undefined) {
-        summary += `  ${k}: "${String(v).substring(0, 200)}"\n`;
-      }
-    });
-
-    summary += '\n全フィールド一覧(キーのみ):\n';
-    summary += Object.keys(inv).join(', ');
-
-    Logger.log('freee invoice raw response:\n' + JSON.stringify(data, null, 2));
-    ui.alert('freee請求書詳細', summary, ui.ButtonSet.OK);
+    _showFreeeInvoiceDetail(id, ui);
   } catch (e) {
     ui.alert('エラー', e.message, ui.ButtonSet.OK);
   }
