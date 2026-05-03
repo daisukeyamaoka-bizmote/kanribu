@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 13px;
+      color: #222;
+      background: #f5f5f5;
+      height: 500px;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: white;
+      border-bottom: 1px solid #ddd;
+      flex: 0 0 auto;
+    }
+    .title { font-weight: 600; color: #1E3A5F; font-size: 14px; }
+    .count { color: #666; font-size: 12px; margin-left: 8px; }
+    .topbar-right { display: flex; gap: 8px; align-items: center; }
+    .topbar button {
+      background: #1E3A5F;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .topbar button.bulk { background: #2E7D32; }
+    .topbar button:hover { opacity: 0.9; }
+    .topbar button:disabled { background: #ccc; cursor: not-allowed; }
+
+    .body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      transition: opacity 0.2s ease;
+    }
+    .card.warn {
+      border-color: #B00020;
+      box-shadow: 0 0 0 1px rgba(176, 0, 32, 0.15);
+    }
+
+    .card-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .card-main { flex: 1; min-width: 0; }
+    .client-name { font-weight: 600; font-size: 14px; }
+    .meta { color: #666; font-size: 11px; margin-top: 2px; }
+    .amount {
+      font-weight: 600;
+      font-size: 16px;
+      color: #1E3A5F;
+      font-variant-numeric: tabular-nums;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .variation {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .variation.up { background: #E8F5E9; color: #2E7D32; }
+    .variation.down { background: #FFF3E0; color: #E65100; }
+    .variation.warn { background: #FFEBEE; color: #B00020; font-weight: 600; }
+    .variation.no-ref { background: #F5F5F5; color: #888; }
+
+    .input-info {
+      color: #888;
+      font-size: 11px;
+      margin-top: 6px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      justify-content: flex-end;
+    }
+    .actions button {
+      border: 1px solid #ccc;
+      background: white;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .actions button.approve {
+      background: #2E7D32;
+      color: white;
+      border-color: #2E7D32;
+      font-weight: 500;
+    }
+    .actions button.approve:hover { background: #1B5E20; }
+    .actions button.reject {
+      background: white;
+      color: #B00020;
+      border-color: #B00020;
+    }
+    .actions button.reject:hover { background: #FFEBEE; }
+    .actions button.toggle-detail {
+      background: white;
+      color: #666;
+    }
+    .actions button.toggle-detail:hover { background: #f5f5f5; }
+    .actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .details {
+      display: none;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+    .details.show { display: block; }
+    .line-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .line-table th {
+      background: #F5F5F5;
+      padding: 5px 8px;
+      text-align: left;
+      font-weight: 500;
+      color: #666;
+      border-bottom: 1px solid #ddd;
+    }
+    .line-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .line-table .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .summary-row td {
+      font-weight: 600;
+      background: #FAFAFA;
+    }
+
+    .empty {
+      text-align: center;
+      color: #888;
+      padding: 48px 16px;
+      background: white;
+      border: 1px dashed #ddd;
+      border-radius: 6px;
+    }
+    .error {
+      color: #B00020;
+      padding: 12px;
+      background: #FFEBEE;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <span class="title">請求承認</span>
+      <span class="count" id="count">読み込み中...</span>
+    </div>
+    <div class="topbar-right">
+      <button class="bulk" type="button" onclick="bulkApprove()" disabled id="bulkBtn">一括承認</button>
+      <button type="button" onclick="loadInvoices()">再読込</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div id="loading">読み込み中...</div>
+    <div id="content"></div>
+  </div>
+
+<script>
+  let currentInvoices = [];
+
+  function loadInvoices() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('content').innerHTML = '';
+    document.getElementById('bulkBtn').disabled = true;
+
+    google.script.run
+      .withSuccessHandler(render)
+      .withFailureHandler(showError)
+      .getInvoicesForApproval();
+  }
+
+  function showError(err) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('count').textContent = 'エラー';
+    document.getElementById('content').innerHTML =
+      '<div class="error">エラー: ' + escapeHtml(err.message) + '</div>';
+  }
+
+  function render(invoices) {
+    currentInvoices = invoices.slice();
+    document.getElementById('loading').style.display = 'none';
+    updateHeader();
+
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+
+    if (invoices.length === 0) {
+      content.innerHTML = '<div class="empty">承認待ちの請求はありません</div>';
+      return;
+    }
+
+    invoices.forEach(inv => {
+      try {
+        content.appendChild(createCard(inv));
+      } catch (e) {
+        console.error('createCard failed', inv, e);
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error';
+        errDiv.textContent = 'カード生成エラー (' + (inv.invoiceId || '?') + '): ' + e.message;
+        content.appendChild(errDiv);
+      }
+    });
+  }
+
+  function updateHeader() {
+    document.getElementById('count').textContent = '承認待ち: ' + currentInvoices.length + '件';
+    document.getElementById('bulkBtn').disabled = currentInvoices.length === 0;
+  }
+
+  function createCard(inv) {
+    const card = document.createElement('div');
+    card.className = 'card' + (inv.variation && inv.variation.warning ? ' warn' : '');
+    card.dataset.invoiceId = inv.invoiceId;
+
+    const ym = String(inv.yearMonth || '').split('-');
+    const subject = (inv.subjectTemplate || '')
+      .replace('{年}', ym[0] || '')
+      .replace('{月}', ym[1] || '');
+
+    let variationBadge = '';
+    if (inv.variation) {
+      if (!inv.variation.hasReference) {
+        variationBadge = '<span class="variation no-ref">前月実績なし</span>';
+      } else {
+        const pct = inv.variation.variationPct;
+        const cls = inv.variation.warning
+          ? 'warn'
+          : (pct > 0 ? 'up' : (pct < 0 ? 'down' : 'no-ref'));
+        const sign = pct > 0 ? '+' : '';
+        const tooltip = '前月: ¥' + inv.variation.lastAmount.toLocaleString();
+        variationBadge = '<span class="variation ' + cls + '" title="' + tooltip + '">前月比 ' + sign + pct + '%</span>';
+      }
+    }
+
+    let lineRows = '';
+    let lineSubtotal = 0;
+    inv.lineItems.forEach(li => {
+      lineSubtotal += li.subtotal;
+      lineRows +=
+        '<tr>' +
+          '<td>' + escapeHtml(li.itemName) + '</td>' +
+          '<td class="num">¥' + li.unitPrice.toLocaleString() + '</td>' +
+          '<td class="num">' + li.quantity + '</td>' +
+          '<td class="num">' + li.taxRate + '%</td>' +
+          '<td class="num">¥' + li.subtotal.toLocaleString() + '</td>' +
+        '</tr>';
+    });
+    const detailsHtml =
+      '<table class="line-table">' +
+        '<thead>' +
+          '<tr><th>品目</th><th class="num">単価(税抜)</th><th class="num">数量</th><th class="num">税率</th><th class="num">小計(税抜)</th></tr>' +
+        '</thead>' +
+        '<tbody>' + lineRows +
+          '<tr class="summary-row">' +
+            '<td colspan="4" class="num">小計(税抜)</td>' +
+            '<td class="num">¥' + inv.subtotal.toLocaleString() + '</td>' +
+          '</tr>' +
+          '<tr class="summary-row">' +
+            '<td colspan="4" class="num">消費税</td>' +
+            '<td class="num">¥' + inv.tax.toLocaleString() + '</td>' +
+          '</tr>' +
+          '<tr class="summary-row">' +
+            '<td colspan="4" class="num">税込合計</td>' +
+            '<td class="num">¥' + inv.total.toLocaleString() + '</td>' +
+          '</tr>' +
+        '</tbody>' +
+      '</table>';
+
+    card.innerHTML =
+      '<div class="card-row">' +
+        '<div class="card-main">' +
+          '<div class="client-name">' + escapeHtml(inv.clientName) + '</div>' +
+          '<div class="meta">' +
+            escapeHtml(inv.yearMonth) + ' | ' + escapeHtml(subject) +
+            ' | オーナー: ' + escapeHtml(inv.owner) +
+          '</div>' +
+        '</div>' +
+        variationBadge +
+        '<div class="amount">¥' + inv.total.toLocaleString() + '</div>' +
+      '</div>' +
+      '<div class="input-info">入力: ' + escapeHtml(inv.inputBy) + ' / ' + escapeHtml(inv.inputAt) + '</div>' +
+      '<div class="actions">' +
+        '<button type="button" class="toggle-detail">明細</button>' +
+        '<button type="button" class="reject">差戻</button>' +
+        '<button type="button" class="approve">承認</button>' +
+      '</div>' +
+      '<div class="details">' + detailsHtml + '</div>';
+
+    card.querySelector('.toggle-detail').addEventListener('click', () => {
+      const det = card.querySelector('.details');
+      det.classList.toggle('show');
+    });
+    card.querySelector('.approve').addEventListener('click', () => approve(card, inv));
+    card.querySelector('.reject').addEventListener('click', () => reject(card, inv));
+
+    return card;
+  }
+
+  function approve(card, inv) {
+    setCardState(card, true);
+    google.script.run
+      .withSuccessHandler(() => removeCard(card))
+      .withFailureHandler(err => {
+        alert('承認失敗: ' + err.message);
+        setCardState(card, false);
+      })
+      .approveInvoice(inv.invoiceId);
+  }
+
+  function reject(card, inv) {
+    const reason = prompt(
+      '差戻理由を入力してください\n\n' +
+      inv.clientName + ' ' + inv.yearMonth + '\n' +
+      '税込: ¥' + inv.total.toLocaleString(),
+      ''
+    );
+    if (reason === null) return;
+    if (reason.trim() === '') {
+      alert('差戻理由は必須です');
+      return;
+    }
+
+    setCardState(card, true);
+    google.script.run
+      .withSuccessHandler(() => removeCard(card))
+      .withFailureHandler(err => {
+        alert('差戻失敗: ' + err.message);
+        setCardState(card, false);
+      })
+      .rejectInvoice(inv.invoiceId, reason.trim());
+  }
+
+  function bulkApprove() {
+    if (currentInvoices.length === 0) return;
+    if (!confirm(currentInvoices.length + '件の請求を一括承認します。\nよろしいですか?')) return;
+
+    document.getElementById('bulkBtn').disabled = true;
+    document.getElementById('bulkBtn').textContent = '承認中...';
+    const ids = currentInvoices.map(i => i.invoiceId);
+
+    google.script.run
+      .withSuccessHandler(results => {
+        const failed = results.filter(r => !r.success);
+        if (failed.length === 0) {
+          alert(results.length + '件すべて承認しました');
+        } else {
+          const msg = (results.length - failed.length) + '件成功、' + failed.length + '件失敗\n\n' +
+            failed.map(f => f.invoiceId + ': ' + f.error).join('\n');
+          alert(msg);
+        }
+        document.getElementById('bulkBtn').textContent = '一括承認';
+        loadInvoices();
+      })
+      .withFailureHandler(err => {
+        alert('一括承認エラー: ' + err.message);
+        document.getElementById('bulkBtn').disabled = false;
+        document.getElementById('bulkBtn').textContent = '一括承認';
+      })
+      .bulkApproveAll(ids);
+  }
+
+  function setCardState(card, pending) {
+    card.querySelectorAll('button').forEach(b => b.disabled = pending);
+    card.style.opacity = pending ? 0.5 : 1;
+  }
+
+  function removeCard(card) {
+    card.style.opacity = 0;
+    setTimeout(() => {
+      card.remove();
+      currentInvoices = currentInvoices.filter(i => i.invoiceId !== card.dataset.invoiceId);
+      updateHeader();
+      if (currentInvoices.length === 0) {
+        document.getElementById('content').innerHTML =
+          '<div class="empty">承認待ちの請求はありません</div>';
+      }
+    }, 200);
+  }
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  loadInvoices();
+</script>
+</body>
+</html>

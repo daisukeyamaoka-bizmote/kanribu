@@ -12,6 +12,7 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('請求業務')
         .addItem('オーナー入力フォームを開く', 'openInputForm')
+        .addItem('承認画面を開く(経理)', 'openApprovalView')
         .addSeparator()
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
         .addItem('請求データをリセット(復旧用)', 'resetAndRecreateMonthlyInvoiceRows')
@@ -63,6 +64,16 @@ function openInputForm() {
   const html = HtmlService.createHtmlOutputFromFile('InputForm')
     .setTitle('請求金額入力');
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * メニューから呼ばれる: 経理向け承認画面(モーダルダイアログ)を開く
+ */
+function openApprovalView() {
+  const html = HtmlService.createHtmlOutputFromFile('ApprovalView')
+    .setWidth(720)
+    .setHeight(560);
+  SpreadsheetApp.getUi().showModalDialog(html, '請求承認');
 }
 
 /**
