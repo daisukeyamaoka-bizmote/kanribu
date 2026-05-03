@@ -65,6 +65,25 @@ const InvoiceFlow = {
   },
 
   /**
+   * 03_請求一覧 に「備考」列を末尾に追加(既に存在すればスキップ)
+   * @return {boolean} 新規追加した場合true
+   */
+  ensureBikoColumn: function() {
+    const sheet = SheetUtil.getSheet(this.INVOICE_SHEET);
+    const lastCol = sheet.getLastColumn();
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (headers.indexOf('備考') !== -1) return false;
+
+    const newCol = lastCol + 1;
+    sheet.getRange(1, newCol).setValue('備考')
+      .setFontWeight('bold').setBackground('#1E3A5F').setFontColor('white').setHorizontalAlignment('center');
+    sheet.getRange(2, newCol).setValue('任意')
+      .setFontStyle('italic').setFontColor('#666666').setFontSize(10);
+    sheet.setColumnWidth(newCol, 220);
+    return true;
+  },
+
+  /**
    * 03_請求一覧 と 03b_請求明細 のデータ行を全削除(ヘッダー2行は残す)
    * テストデータを汚した時の復旧用
    * @return {object} 削除した行数

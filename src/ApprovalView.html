@@ -160,6 +160,20 @@
       font-weight: 600;
       background: #FAFAFA;
     }
+    .biko-display {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #FFFDE7;
+      border-left: 3px solid #FBC02D;
+      font-size: 12px;
+      white-space: pre-wrap;
+      border-radius: 3px;
+    }
+    .biko-display .label {
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 4px;
+    }
 
     .empty {
       text-align: center;
@@ -305,7 +319,12 @@
             '<td class="num">¥' + inv.total.toLocaleString() + '</td>' +
           '</tr>' +
         '</tbody>' +
-      '</table>';
+      '</table>' +
+      (inv.biko ?
+        '<div class="biko-display">' +
+          '<div class="label">備考(freee請求書に転記)</div>' +
+          escapeHtml(inv.biko) +
+        '</div>' : '');
 
     card.innerHTML =
       '<div class="card-row">' +

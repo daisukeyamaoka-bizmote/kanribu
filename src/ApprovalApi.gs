@@ -74,6 +74,7 @@ const ApprovalApi = {
         inputAt: this._formatDateTime(r['入力日時']),
         variation: variation,
         lineItems: lineItems,
+        biko: String(r['備考'] || '').trim(),
       };
     });
   },

@@ -51,6 +51,7 @@ function setupInitialConfig() {
   Config.initialize();
   const lineSheetCreated = InvoiceFlow.ensureInvoiceLineSheet();
   const mappingCreated = UserMapping.ensureSheet();
+  const bikoCreated = InvoiceFlow.ensureBikoColumn();
 
   let msg = 'スクリプトプロパティに設定値を保存しました。\n';
   msg += lineSheetCreated
@@ -59,6 +60,9 @@ function setupInitialConfig() {
   msg += mappingCreated
     ? '99b_ユーザマッピング シートを新規作成しました。\n'
     : '99b_ユーザマッピング シートは既に存在します。\n';
+  msg += bikoCreated
+    ? '03_請求一覧 に「備考」列を追加しました。\n'
+    : '03_請求一覧 の「備考」列は既に存在します。\n';
   msg += '\n未認証の場合は「2. freee認証開始」を実行してください。';
 
   SpreadsheetApp.getUi().alert(

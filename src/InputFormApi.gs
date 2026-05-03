@@ -51,6 +51,7 @@ const InputFormApi = {
           subjectTemplate: client['件名テンプレ'] || '',
           lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], yearMonth),
           templates: this._getItemTemplates(r['クライアントID']),
+          biko: r['備考'] || '',
           status: String(r['ステータス'] || '').trim(),
           memo: r['メモ'] || '',
         };
@@ -62,11 +63,12 @@ const InputFormApi = {
   },
 
   /**
-   * 入力された明細を保存し、請求一覧のステータスを「入力済」に更新
+   * 入力された明細+備考を保存し、請求一覧のステータスを「入力済」に更新
    * @param {string} invoiceId 例: INV-202605-001
    * @param {Array<{itemName, unitPrice, quantity, taxRate}>} items
+   * @param {string} [biko] - 備考(任意。freee請求書の備考欄に転記される)
    */
-  submitInvoiceInput: function(invoiceId, items) {
+  submitInvoiceInput: function(invoiceId, items, biko) {
     if (!invoiceId) throw new Error('請求IDが指定されていません');
     if (!Array.isArray(items) || items.length === 0) throw new Error('明細が空です');
 
@@ -122,6 +124,7 @@ const InputFormApi = {
         'ステータス': '入力済',
         '入力者': Session.getActiveUser().getEmail(),
         '入力日時': new Date(),
+        '備考': String(biko || '').trim(),
       });
 
       return { success: true, invoiceId: invoiceId, subtotal: subtotal, tax: tax, total: total };
@@ -133,6 +136,17 @@ const InputFormApi = {
   /**
    * 前月の同クライアントの明細を取得 (前月コピー機能用)
    */
+  /**
+   * 前月の備考を取得 (前月コピー機能用)
+   */
+  getLastMonthBiko: function(clientId, currentYearMonth) {
+    const lastYearMonth = this._getLastYearMonth(normalizeYearMonth(currentYearMonth));
+    const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
+      .find(r => r['クライアントID'] === clientId && normalizeYearMonth(r['対象月']) === lastYearMonth);
+    if (!lastInvoice) return '';
+    return String(lastInvoice['備考'] || '').trim();
+  },
+
   getLastMonthLineItems: function(clientId, currentYearMonth) {
     const lastYearMonth = this._getLastYearMonth(normalizeYearMonth(currentYearMonth));
     const lastInvoice = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
@@ -221,9 +235,12 @@ const InputFormApi = {
 function getMyPendingInvoices() {
   return InputFormApi.getMyPendingInvoices();
 }
-function submitInvoiceInput(invoiceId, items) {
-  return InputFormApi.submitInvoiceInput(invoiceId, items);
+function submitInvoiceInput(invoiceId, items, biko) {
+  return InputFormApi.submitInvoiceInput(invoiceId, items, biko);
 }
 function getLastMonthLineItems(clientId, currentYearMonth) {
   return InputFormApi.getLastMonthLineItems(clientId, currentYearMonth);
+}
+function getLastMonthBiko(clientId, currentYearMonth) {
+  return InputFormApi.getLastMonthBiko(clientId, currentYearMonth);
 }

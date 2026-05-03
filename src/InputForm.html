@@ -97,6 +97,26 @@
       margin-top: 4px;
     }
     .add-row:hover { background: #f0f0f0; }
+    .biko-section {
+      margin-top: 10px;
+    }
+    .biko-section label {
+      display: block;
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 3px;
+    }
+    .biko-section textarea {
+      width: 100%;
+      font-size: 12px;
+      padding: 5px 6px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      resize: vertical;
+      min-height: 44px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
     .total {
       text-align: right;
       font-weight: 600;
@@ -262,6 +282,10 @@
         (isRejected && inv.memo ? '<div class="memo">' + escapeHtml(inv.memo) + '</div>' : '') +
         '<div class="items"></div>' +
         '<button type="button" class="add-row">+ 行を追加</button>' +
+        '<div class="biko-section">' +
+          '<label>備考(任意・freee請求書の備考欄に記載されます)</label>' +
+          '<textarea class="biko" placeholder="例: 振込手数料はご負担ください..."></textarea>' +
+        '</div>' +
         '<div class="total">' +
           '小計(税抜): <span class="subtotal-display">¥0</span>' +
           '<span class="with-tax">(税込: <span class="total-display">¥0</span>)</span>' +
@@ -277,6 +301,11 @@
         ? inv.templates
         : [{ itemName: '', unitPrice: 0, quantity: 1, taxRate: 10, unit: '' }];
       initial.forEach(t => itemsContainer.appendChild(createItemRow(t, card)));
+
+      // 備考欄: 既存の入力済み or 差戻 の場合は前回の値を初期表示
+      if (inv.biko) {
+        card.querySelector('.biko').value = inv.biko;
+      }
 
       card.querySelector('.add-row').addEventListener('click', () => {
         itemsContainer.appendChild(createItemRow({ itemName: '', unitPrice: 0, quantity: 1, taxRate: 10, unit: '' }, card));
@@ -349,8 +378,18 @@
           itemsContainer.innerHTML = '';
           items.forEach(item => itemsContainer.appendChild(createItemRow(item, card)));
           updateTotal(card);
-          btn.disabled = false;
-          btn.textContent = original;
+          // 前月の備考もコピー(成功してもしなくても明細コピーは成功させる)
+          google.script.run
+            .withSuccessHandler(biko => {
+              if (biko) card.querySelector('.biko').value = biko;
+              btn.disabled = false;
+              btn.textContent = original;
+            })
+            .withFailureHandler(() => {
+              btn.disabled = false;
+              btn.textContent = original;
+            })
+            .getLastMonthBiko(inv.clientId, inv.yearMonth);
         })
         .withFailureHandler(err => {
           alert('前月コピーに失敗しました: ' + err.message);
@@ -375,6 +414,8 @@
         return;
       }
 
+      const biko = (card.querySelector('.biko').value || '').trim();
+
       const submitBtn = card.querySelector('.submit');
       const copyBtn = card.querySelector('.copy-last');
       submitBtn.disabled = true;
@@ -398,7 +439,7 @@
           copyBtn.disabled = false;
           submitBtn.textContent = orig;
         })
-        .submitInvoiceInput(inv.invoiceId, items);
+        .submitInvoiceInput(inv.invoiceId, items, biko);
     }
 
     function escapeHtml(s) {

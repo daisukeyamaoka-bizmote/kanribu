@@ -60,6 +60,7 @@ const InvoiceIssue = {
         issueDate: Utilities.formatDate(issueDate, 'JST', 'yyyy-MM-dd'),
         dueDate: Utilities.formatDate(dueDate, 'JST', 'yyyy-MM-dd'),
         lineItems: lineItems,
+        biko: String(r['備考'] || '').trim(),
         validation: this._validate(client, lineItems),
       };
     });
@@ -203,7 +204,7 @@ const InvoiceIssue = {
       };
     });
 
-    return {
+    const payload = {
       company_id: companyId,
       issue_date: preview.issueDate,
       billing_date: preview.issueDate,
@@ -222,10 +223,12 @@ const InvoiceIssue = {
       },
       lines: lines,
     };
-    // 注:
-    // - memo は空だと freee が400を返す(less_than_min_length)。必要時に呼び出し側で payload.memo を追加
-    // - tax_entry_method / tax_fraction / withholding_tax_entry_method / partner_title は
-    //   スクリプトプロパティで上書き可。デフォルトは exclusive / round / off / 御中
+    // memo は空だと freee が400を返す(less_than_min_length)。
+    // 備考に値があるときだけ memo フィールドを追加する。
+    if (preview.biko) {
+      payload.memo = preview.biko;
+    }
+    return payload;
   },
 
   /**
