@@ -154,22 +154,53 @@ const ApprovalApi = {
 
   /**
    * 一括承認: 引数の請求ID配列を順に承認
-   * 失敗したものは結果に含めて返す
+   * 失敗したものは結果に含めて返す。
+   * Lockは一度だけ取得して全件処理し、ロック競合を回避。
    */
   bulkApproveAll: function(invoiceIds) {
     this.checkAccess();
-    if (!Array.isArray(invoiceIds)) throw new Error('請求ID一覧が不正です');
+    if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      throw new Error('請求ID一覧が空または不正です');
+    }
+
+    const lock = LockService.getDocumentLock();
+    if (!lock.tryLock(30000)) throw new Error('他の処理が実行中です。少し時間を置いて再度お試しください。');
 
     const results = [];
-    invoiceIds.forEach(id => {
-      try {
-        this.approveInvoice(id);
-        results.push({ invoiceId: id, success: true });
-      } catch (e) {
-        results.push({ invoiceId: id, success: false, error: e.message });
-      }
-    });
-    return results;
+    try {
+      const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
+      const userEmail = Session.getActiveUser().getEmail();
+      const now = new Date();
+
+      invoiceIds.forEach(id => {
+        try {
+          const row = allRows.find(r => r['請求ID'] === id);
+          if (!row) throw new Error('請求が見つかりません');
+          const status = String(row['ステータス'] || '').trim();
+          if (status !== '入力済') throw new Error(`既に処理済みです (現在のステータス: ${status})`);
+
+          SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
+            'ステータス': '承認済',
+            '承認者': userEmail,
+            '承認日時': now,
+          });
+
+          const total = Number(row['税込金額']) || 0;
+          Notifier.slack(
+            `請求承認(一括): ${row['クライアントID']} ${normalizeYearMonth(row['対象月'])} 税込¥${total.toLocaleString()}`
+          );
+
+          results.push({ invoiceId: id, success: true });
+        } catch (e) {
+          Logger.log(`一括承認 失敗 ${id}: ${e.message}`);
+          results.push({ invoiceId: id, success: false, error: e.message });
+        }
+      });
+      Logger.log(`一括承認 完了: ${results.filter(r => r.success).length}/${results.length}`);
+      return results;
+    } finally {
+      lock.releaseLock();
+    }
   },
 
   /**
