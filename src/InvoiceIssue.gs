@@ -188,7 +188,8 @@ const InvoiceIssue = {
       const subtotal = li.unitPrice * li.quantity;
       return {
         order: i + 1,
-        type: 'normal',
+        // freee 新APIの type: 'item'(明細行) / 'text'(テキスト行)
+        type: 'item',
         qty: li.quantity,
         unit_price: li.unitPrice,
         vat: Math.round(subtotal * (li.taxRate / 100)),
