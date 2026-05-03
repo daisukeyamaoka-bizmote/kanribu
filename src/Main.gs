@@ -10,6 +10,13 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('請求管理')
     .addSubMenu(
+      ui.createMenu('請求業務')
+        .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
+        .addSeparator()
+        .addItem('月初トリガーを登録(毎月1日9時)', 'installMonthlyInvoiceTrigger')
+        .addItem('月初トリガーを解除', 'removeMonthlyInvoiceTrigger')
+    )
+    .addSubMenu(
       ui.createMenu('開発者メニュー')
         .addItem('1. 初期設定', 'setupInitialConfig')
         .addItem('2. freee認証開始', 'startFreeeOAuth')
@@ -25,10 +32,17 @@ function onOpen() {
 
 function setupInitialConfig() {
   Config.initialize();
+  const sheetCreated = InvoiceFlow.ensureInvoiceLineSheet();
+
+  let msg = 'スクリプトプロパティに設定値を保存しました。\n';
+  msg += sheetCreated
+    ? '03b_請求明細 シートを新規作成しました。\n'
+    : '03b_請求明細 シートは既に存在します。\n';
+  msg += '\n未認証の場合は「2. freee認証開始」を実行してください。';
+
   SpreadsheetApp.getUi().alert(
     '初期設定完了',
-    'スクリプトプロパティに設定値を保存しました。\n\n' +
-    '次は「2. freee認証開始」を実行してください。',
+    msg,
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 }
@@ -36,11 +50,15 @@ function setupInitialConfig() {
 function testFreeeConnection() {
   try {
     const company = FreeeClient.getCompany();
+    const startMonth = company.start_month
+      || company.default_start_month
+      || (company.fiscal_years && company.fiscal_years[0] && company.fiscal_years[0].start_date && Number(company.fiscal_years[0].start_date.substring(5, 7)))
+      || '不明';
     SpreadsheetApp.getUi().alert(
       'freee接続成功',
       `会社名: ${company.name}\n` +
       `事業所ID: ${company.id}\n` +
-      `期首月: ${company.start_month}月`,
+      `期首月: ${startMonth}月`,
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (e) {
