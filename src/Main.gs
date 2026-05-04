@@ -21,6 +21,7 @@ function onOpen() {
         .addItem('メール送付プレビュー', 'previewInvoiceMails')
         .addItem('一括メール送付(ドライラン)', 'dryRunSendInvoiceMails')
         .addItem('一括メール送付(本番)', 'sendInvoiceMails')
+        .addItem('選択行を送付済にする(手動マーク)', 'markSelectedRowAsSent')
         .addSeparator()
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
         .addItem('請求データをリセット(復旧用)', 'resetAndRecreateMonthlyInvoiceRows')
@@ -48,6 +49,66 @@ function onOpen() {
         .addItem('14. メール送付対象を確認(デバッグ)', 'debugPendingMails')
     )
     .addToUi();
+}
+
+/**
+ * メニューから呼ばれる: 03_請求一覧 で選択中の行を「送付済」に手動マーク
+ * (freee 管理画面で手動でメール送付した後に使う想定)
+ */
+function markSelectedRowAsSent() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    if (sheet.getName() !== '03_請求一覧') {
+      ui.alert('実行先エラー', '03_請求一覧 シートを開いてから、対象の行を選択して実行してください。', ui.ButtonSet.OK);
+      return;
+    }
+    const row = sheet.getActiveRange().getRow();
+    if (row < 3) {
+      ui.alert('行選択エラー', 'データ行(3行目以降)を選択してください。', ui.ButtonSet.OK);
+      return;
+    }
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const statusCol = headers.indexOf('ステータス');
+    const sentAtCol = headers.indexOf('送付完了日時');
+    const idCol = headers.indexOf('請求ID');
+    if (statusCol < 0 || sentAtCol < 0) {
+      ui.alert('列エラー', '「ステータス」または「送付完了日時」列が見つかりません。', ui.ButtonSet.OK);
+      return;
+    }
+
+    const invoiceId = sheet.getRange(row, idCol + 1).getValue();
+    const currentStatus = String(sheet.getRange(row, statusCol + 1).getValue() || '').trim();
+    const currentSentAt = sheet.getRange(row, sentAtCol + 1).getValue();
+
+    if (currentStatus !== '発行済') {
+      const proceed = ui.alert(
+        '確認',
+        `現在のステータス: ${currentStatus}\n\n通常は「発行済」のみマークしますが、それでも「送付済」にしますか?`,
+        ui.ButtonSet.YES_NO
+      );
+      if (proceed !== ui.Button.YES) return;
+    }
+    if (currentSentAt) {
+      const proceed = ui.alert(
+        '確認',
+        `既に送付完了日時が記録されています: ${currentSentAt}\n\n上書きしますか?`,
+        ui.ButtonSet.YES_NO
+      );
+      if (proceed !== ui.Button.YES) return;
+    }
+
+    sheet.getRange(row, statusCol + 1).setValue('送付済');
+    sheet.getRange(row, sentAtCol + 1).setValue(new Date());
+
+    ui.alert(
+      '送付済マーク完了',
+      `${invoiceId} を「送付済」にマークしました。`,
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
 }
 
 function setupInitialConfig() {
