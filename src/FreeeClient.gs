@@ -94,7 +94,8 @@ const FreeeClient = {
    */
   downloadInvoicePdf: function(freeeInvoiceId) {
     const companyId = Config.get('FREEE_COMPANY_ID');
-    const url = this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/download?company_id=${companyId}`;
+    // freee の請求書PDFは /api/1/invoices/{id}/download_pdf エンドポイント (会計API側)
+    const url = this.ENDPOINTS.ACCOUNTING + `/api/1/invoices/${freeeInvoiceId}/download_pdf?company_id=${companyId}`;
     const token = FreeeOAuth.getAccessToken();
 
     const response = UrlFetchApp.fetch(url, {
