@@ -89,31 +89,41 @@ const FreeeClient = {
 
   /**
    * 請求書PDFをダウンロード(バイナリ)
+   * 複数のエンドポイント候補を順番に試す(freee の API 仕様が不安定なため)
    * @param {number|string} freeeInvoiceId
    * @return {Blob} PDFバイナリ
    */
   downloadInvoicePdf: function(freeeInvoiceId) {
     const companyId = Config.get('FREEE_COMPANY_ID');
-    // freee の請求書PDFは /api/1/invoices/{id}/download_pdf エンドポイント (会計API側)
-    const url = this.ENDPOINTS.ACCOUNTING + `/api/1/invoices/${freeeInvoiceId}/download_pdf?company_id=${companyId}`;
     const token = FreeeOAuth.getAccessToken();
 
-    const response = UrlFetchApp.fetch(url, {
-      method: 'get',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-      },
-      muteHttpExceptions: true,
-    });
+    const candidates = [
+      this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/pdf?company_id=${companyId}`,
+      this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/preview_pdf?company_id=${companyId}`,
+      this.ENDPOINTS.ACCOUNTING + `/api/1/invoices/${freeeInvoiceId}/download_pdf?company_id=${companyId}`,
+      this.ENDPOINTS.INVOICE + `/invoices/${freeeInvoiceId}/download?company_id=${companyId}`,
+    ];
 
-    const code = response.getResponseCode();
-    if (code >= 400) {
-      const body = response.getContentText().substring(0, 500);
-      throw new Error(`freee PDFダウンロード失敗 HTTP ${code}: ${body}`);
+    const errors = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const url = candidates[i];
+      const response = UrlFetchApp.fetch(url, {
+        method: 'get',
+        headers: { 'Authorization': 'Bearer ' + token },
+        muteHttpExceptions: true,
+      });
+      const code = response.getResponseCode();
+      const contentType = response.getHeaders()['Content-Type'] || '';
+
+      if (code < 400 && contentType.indexOf('application/pdf') !== -1) {
+        Logger.log(`PDFダウンロード成功 (${i + 1}番目の候補): ${url}`);
+        Utilities.sleep(200);
+        return response.getBlob().setContentType('application/pdf');
+      }
+      errors.push(`[${i + 1}] ${url} → HTTP ${code} (${contentType}): ${response.getContentText().substring(0, 200)}`);
     }
 
-    Utilities.sleep(200);
-    return response.getBlob().setContentType('application/pdf');
+    throw new Error('freee PDFダウンロード失敗: 全候補で失敗\n' + errors.join('\n'));
   },
 
   listDeals: function(opts) {
