@@ -88,6 +88,15 @@ const FreeeClient = {
   },
 
   /**
+   * 請求書をfreeeから取引先にメール送信させる (freee内部の送付機能を使う)
+   * @param {object} payload - sendings API の本体
+   * @return {object} レスポンス
+   */
+  sendInvoice: function(payload) {
+    return this.request('invoice', 'POST', '/sendings', payload);
+  },
+
+  /**
    * 請求書PDFをダウンロード(バイナリ)
    * 複数のエンドポイント候補を順番に試す(freee の API 仕様が不安定なため)
    * @param {number|string} freeeInvoiceId
