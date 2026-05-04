@@ -1,23 +1,20 @@
 /**
- * 請求書メール送付フロー (ステップ3 C-3)
+ * 請求書メール送付フロー (ステップ3 C-3) — freee送信API版
  *
  * - 対象: ステータス=発行済 + 送付完了日時 が空 + 送付方法=メール の請求書
- * - PDFは freee からメモリにダウンロードして即添付(Drive保存しない)
+ * - freee の POST /iv/sendings で freee から取引先にメール送信させる
+ *   (PDFは freee が自動で添付。GAS側のPDFダウンロード/添付処理は不要)
  * - 送信成功後 ステータス→送付済 + 送付完了日時を記録
- * - dryRun フラグで実送信せず本文をログ出力のみに切替可能
+ * - dryRun フラグで実送信せず payload をログ出力のみに切替可能
  *
  * 差出人:
- *   スクリプトを実行している Google アカウント (Session.getActiveUser()) から送信。
- *   山岡 → daisuke.yamaoka@bizmote.jp / 樋口 → miku.higuchi@bizmote.jp など。
- *
- * テンプレート:
- *   件名・本文はこのファイル内のテンプレートを使用。
- *   将来的に 99c_メールテンプレート シートで上書き可能にする想定。
+ *   freee 側に登録されている送信元メールアドレスから送信される。
+ *   差出人の表示名や送信元アドレスを変えたい場合は freee 管理画面の
+ *   「請求書テンプレート」または「メール設定」で調整。
  */
 const InvoiceMail = {
   INVOICE_SHEET: '03_請求一覧',
   CLIENT_MASTER_SHEET: '01_クライアントマスタ',
-  LINE_ITEM_SHEET: '03b_請求明細',
 
   SUBJECT_TEMPLATE: '【{年}/{月}分 ご請求書】{件名}',
 
@@ -27,7 +24,7 @@ const InvoiceMail = {
     'いつも大変お世話になっております。\n' +
     'bizmote株式会社 {送信者表示名}です。\n' +
     '\n' +
-    '{年}年{月}月分のご請求書を添付にてお送りいたします。\n' +
+    '{年}年{月}月分のご請求書をお送りいたします。\n' +
     'ご査収のほど、よろしくお願いいたします。\n' +
     '\n' +
     '【ご請求内容】\n' +
@@ -49,7 +46,6 @@ const InvoiceMail = {
 
   /**
    * 送付対象(発行済かつ未送付かつ送付方法=メール)の請求書一覧を返す
-   * @return {Array<object>}
    */
   getPendingMails: function() {
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
@@ -64,13 +60,34 @@ const InvoiceMail = {
     const clientMap = {};
     clients.forEach(c => clientMap[c['クライアントID']] = c);
 
+    const senderEmail = Session.getActiveUser().getEmail();
+    const senderName = UserMapping.getDisplayName(senderEmail) || senderEmail.split('@')[0];
+
     return targets.map(r => {
       const client = clientMap[r['クライアントID']] || {};
       const yearMonth = normalizeYearMonth(r['対象月']);
+      const invoiceSubject = this._buildInvoiceSubject(client['件名テンプレ'] || '', yearMonth);
       const subject = this._render(this.SUBJECT_TEMPLATE, {
         '{年}': yearMonth.split('-')[0] || '',
         '{月}': yearMonth.split('-')[1] || '',
-        '{件名}': this._buildInvoiceSubject(client['件名テンプレ'] || '', yearMonth),
+        '{件名}': invoiceSubject,
+      });
+
+      const total = Number(r['税込金額']) || 0;
+      const dueDate = this._dueDateString(yearMonth, client['支払サイト']);
+
+      const body = this._render(this.BODY_TEMPLATE, {
+        '{To担当者名}': client['To担当者名'] || `${client['企業名'] || r['クライアントID']} ご担当者様`,
+        '{送信者表示名}': senderName,
+        '{年}': yearMonth.split('-')[0] || '',
+        '{月}': yearMonth.split('-')[1] || '',
+        '{件名}': invoiceSubject,
+        '{税込金額}': total.toLocaleString(),
+        '{期日}': dueDate,
+        '{bank_info}': Config.getOrDefault('BANK_INFO', ''),
+        '{COMPANY_NAME}': Config.getOrDefault('COMPANY_NAME', 'bizmote株式会社'),
+        '{COMPANY_ZIP}': Config.getOrDefault('COMPANY_ZIP', ''),
+        '{COMPANY_ADDRESS}': Config.getOrDefault('COMPANY_ADDRESS', ''),
       });
 
       const sendMethod = String(client['送付方法'] || '').trim();
@@ -95,27 +112,27 @@ const InvoiceMail = {
         ccAddress: ccAddress,
         bccAddress: bccAddress,
         subject: subject,
-        invoiceSubject: this._buildInvoiceSubject(client['件名テンプレ'] || '', yearMonth),
-        total: Number(r['税込金額']) || 0,
-        dueDate: this._dueDateString(yearMonth, client['支払サイト']),
+        body: body,
+        invoiceSubject: invoiceSubject,
+        total: total,
+        dueDate: dueDate,
         sendMethod: sendMethod,
         skipReason: skipReason,
+        senderEmail: senderEmail,
+        senderName: senderName,
       };
     });
   },
 
   /**
-   * 1件のメールを送付 (内部)
-   * @param {object} preview - getPendingMails の1要素
-   * @param {boolean} dryRun
-   * @private
+   * 1件のメールを freee API で送信 (内部)
    */
   _sendOne: function(preview, dryRun) {
     if (preview.skipReason) {
       throw new Error(preview.skipReason);
     }
 
-    // ステータス再チェック (送信直前の差し戻し検知)
+    // ステータス再チェック
     const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
     const row = allRows.find(r => r['請求ID'] === preview.invoiceId);
     if (!row) throw new Error(`請求が見つかりません: ${preview.invoiceId}`);
@@ -123,29 +140,10 @@ const InvoiceMail = {
     if (status !== '発行済') throw new Error(`ステータスが発行済ではありません (${status})`);
     if (row['送付完了日時']) throw new Error('既に送付済みです');
 
-    const senderEmail = Session.getActiveUser().getEmail();
-    const senderName = UserMapping.getDisplayName(senderEmail) || senderEmail.split('@')[0];
-
-    const body = this._render(this.BODY_TEMPLATE, {
-      '{To担当者名}': preview.toName || `${preview.clientName} ご担当者様`,
-      '{送信者表示名}': senderName,
-      '{年}': preview.yearMonth.split('-')[0] || '',
-      '{月}': preview.yearMonth.split('-')[1] || '',
-      '{件名}': preview.invoiceSubject,
-      '{税込金額}': preview.total.toLocaleString(),
-      '{期日}': preview.dueDate,
-      '{bank_info}': Config.getOrDefault('BANK_INFO', ''),
-      '{COMPANY_NAME}': Config.getOrDefault('COMPANY_NAME', 'bizmote株式会社'),
-      '{COMPANY_ZIP}': Config.getOrDefault('COMPANY_ZIP', ''),
-      '{COMPANY_ADDRESS}': Config.getOrDefault('COMPANY_ADDRESS', ''),
-    });
+    const payload = this.buildSendingPayload(preview);
 
     if (dryRun) {
-      Logger.log(
-        `[dryRun] ${preview.invoiceId}\n` +
-        `To: ${preview.toAddress}\nCc: ${preview.ccAddress}\nBcc: ${preview.bccAddress}\n` +
-        `Subject: ${preview.subject}\n\n${body}`
-      );
+      Logger.log(`[dryRun] ${preview.invoiceId} payload:\n${JSON.stringify(payload, null, 2)}`);
       return {
         invoiceId: preview.invoiceId,
         clientName: preview.clientName,
@@ -154,25 +152,13 @@ const InvoiceMail = {
       };
     }
 
-    const pdfBlob = FreeeClient.downloadInvoicePdf(preview.freeeInvoiceId);
-    const fileName = this._buildFileName(preview.clientName, preview.yearMonth, preview.freeeInvoiceId);
-    pdfBlob.setName(fileName);
-
-    const options = {
-      attachments: [pdfBlob],
-      name: senderName + ' (bizmote株式会社)',
-    };
-    if (preview.ccAddress) options.cc = preview.ccAddress;
-    if (preview.bccAddress) options.bcc = preview.bccAddress;
-
-    MailApp.sendEmail(preview.toAddress, preview.subject, body, options);
+    const response = FreeeClient.sendInvoice(payload);
+    Logger.log(`送付成功 ${preview.invoiceId}: ${JSON.stringify(response).substring(0, 500)}`);
 
     SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
       'ステータス': '送付済',
       '送付完了日時': new Date(),
     });
-
-    Logger.log(`メール送付成功 ${preview.invoiceId} → ${preview.toAddress}`);
 
     return {
       invoiceId: preview.invoiceId,
@@ -184,8 +170,25 @@ const InvoiceMail = {
   },
 
   /**
+   * freee /iv/sendings の payload を構築
+   * 注: 正確なフィールド名は freee API 仕様に依存。エラーから順次修正する想定
+   */
+  buildSendingPayload: function(preview) {
+    const companyId = Config.getNumber('FREEE_COMPANY_ID');
+    return {
+      company_id: companyId,
+      invoice_id: Number(preview.freeeInvoiceId),
+      sending_type: 'email',
+      to_emails: [preview.toAddress],
+      cc_emails: preview.ccAddress ? [preview.ccAddress] : [],
+      bcc_emails: preview.bccAddress ? [preview.bccAddress] : [],
+      subject: preview.subject,
+      body: preview.body,
+    };
+  },
+
+  /**
    * 一括送付
-   * @param {boolean} dryRun
    */
   sendAllPending: function(dryRun) {
     const lock = LockService.getDocumentLock();
@@ -213,7 +216,7 @@ const InvoiceMail = {
           Logger.log(`送付失敗 ${t.invoiceId}: ${e.message}`);
           failed.push({ invoiceId: t.invoiceId, clientName: t.clientName, error: e.message });
         }
-        Utilities.sleep(500); // mail rate limit + freee rate limit
+        Utilities.sleep(500);
       });
 
       Notifier.slack(
@@ -244,11 +247,6 @@ const InvoiceMail = {
     return String(template || '')
       .replace('{年}', parts[0] || '')
       .replace('{月}', parts[1] || '');
-  },
-
-  _buildFileName: function(clientName, yearMonth, freeeInvoiceId) {
-    const cleanName = String(clientName).replace(/[\\\/:*?"<>|]/g, '_').trim();
-    return `${cleanName}_${yearMonth}_請求書_${freeeInvoiceId}.pdf`;
   },
 
   _dueDateString: function(yearMonth, terms) {
@@ -285,7 +283,8 @@ function previewInvoiceMails() {
              `   税込: ¥${t.total.toLocaleString()} 期日: ${t.dueDate}`;
     }).join('\n\n');
 
-    const msg = `差出人: ${senderEmail} (表示名: ${senderName})\n` +
+    const msg = `スプレッドシート操作者: ${senderEmail} (表示名: ${senderName})\n` +
+                `差出人: freee に登録された送信元メールアドレス\n` +
                 `対象: ${targets.length}件\n\n` + lines;
     Logger.log(msg);
     ui.alert('メール送付プレビュー', msg, ui.ButtonSet.OK);
@@ -301,13 +300,16 @@ function dryRunSendInvoiceMails() {
   const ui = SpreadsheetApp.getUi();
   try {
     const result = InvoiceMail.sendAllPending(true);
-    const msg = `ドライラン完了\n\n` +
-                `対象: ${result.total}件\n` +
-                `成功(構築): ${result.sent.length}件\n` +
-                `スキップ: ${result.skipped.length}件\n` +
-                `失敗: ${result.failed.length}件\n\n` +
-                `実送信は行っていません。\n` +
-                `各メール本文は Apps Script の実行ログをご確認ください。`;
+    let msg = `ドライラン完了\n\n` +
+              `対象: ${result.total}件\n` +
+              `payload構築 成功: ${result.sent.length}件\n` +
+              `スキップ: ${result.skipped.length}件\n` +
+              `失敗: ${result.failed.length}件\n\n` +
+              `freee API は呼んでいません。\n` +
+              `各payloadは Apps Script の実行ログを確認してください。`;
+    if (result.failed.length > 0) {
+      msg += '\n\n失敗:\n' + result.failed.map(f => `- ${f.clientName}: ${f.error}`).join('\n');
+    }
     ui.alert('ドライラン結果', msg, ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('ドライラン エラー', e.message, ui.ButtonSet.OK);
@@ -315,7 +317,7 @@ function dryRunSendInvoiceMails() {
 }
 
 /**
- * メニューから呼ばれる: 本番メール送付
+ * メニューから呼ばれる: 本番メール送付 (freee API 経由)
  */
 function sendInvoiceMails() {
   const ui = SpreadsheetApp.getUi();
@@ -333,17 +335,10 @@ function sendInvoiceMails() {
     return;
   }
 
-  const senderEmail = Session.getActiveUser().getEmail();
-  const dailyQuota = MailApp.getRemainingDailyQuota();
-
-  let confirmMsg = `差出人: ${senderEmail}\n` +
-                   `送信可能件数(本日残): ${dailyQuota}\n\n` +
+  let confirmMsg = `freee 経由で取引先にメール送付します。\n\n` +
                    `送付対象: ${sendable.length}件\n` +
-                   sendable.map(t => `- ${t.clientName} → ${t.toAddress}`).join('\n');
-  if (sendable.length > dailyQuota) {
-    confirmMsg += `\n\n警告: 送信枠 (${dailyQuota}通) を超えています!`;
-  }
-  confirmMsg += '\n\n実際にメールを送信します。よろしいですか?';
+                   sendable.map(t => `- ${t.clientName} → ${t.toAddress}`).join('\n') +
+                   '\n\nこの操作は freee 経由で実メールが送信されます。\n本当に実行しますか?';
 
   const confirm = ui.alert('一括メール送付 確認', confirmMsg, ui.ButtonSet.YES_NO);
   if (confirm !== ui.Button.YES) return;
