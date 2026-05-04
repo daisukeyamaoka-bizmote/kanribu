@@ -45,6 +45,7 @@ function onOpen() {
         .addItem('11. 設定値の正規化(TAX_CODE_10=129)', 'normalizeKnownConfig')
         .addItem('12. freee請求書詳細を取得(ID指定)', 'fetchFreeeInvoiceDetail')
         .addItem('13. freee請求書詳細を取得(選択行)', 'fetchFreeeInvoiceDetailFromRow')
+        .addItem('14. メール送付対象を確認(デバッグ)', 'debugPendingMails')
     )
     .addToUi();
 }
@@ -214,6 +215,46 @@ function normalizeKnownConfig() {
 
   Object.keys(fixes).forEach(k => Config.set(k, fixes[k]));
   ui.alert('完了', '正規化しました。再度「一括発行」をお試しください。', ui.ButtonSet.OK);
+}
+
+/**
+ * メール送付対象を診断: 03_請求一覧の各行が getPendingMails のフィルタを
+ * 通るかどうかを行ごとに表示
+ */
+function debugPendingMails() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const allRows = SheetUtil.readAsObjects('03_請求一覧', 1, 3);
+    const clients = SheetUtil.readAsObjects('01_クライアントマスタ', 1, 3);
+    const clientMap = {};
+    clients.forEach(c => clientMap[c['クライアントID']] = c);
+
+    let msg = `03_請求一覧 全${allRows.length}行 のメール送付フィルタ判定:\n\n`;
+
+    allRows.forEach(r => {
+      const status = String(r['ステータス'] || '').trim();
+      const freeeId = r['freee請求書ID'];
+      const sentAt = r['送付完了日時'];
+      const client = clientMap[r['クライアントID']] || {};
+      const sendMethod = String(client['送付方法'] || '').trim();
+      const toAddress = String(client['Toアドレス'] || '').trim();
+
+      const checks = [];
+      if (status !== '発行済') checks.push(`ステータス="${status}" (要発行済)`);
+      if (!freeeId) checks.push('freee請求書ID 空');
+      if (sentAt) checks.push(`送付完了日時="${sentAt}" (要空)`);
+      if (sendMethod !== 'メール') checks.push(`送付方法="${sendMethod}" (要メール)`);
+      if (!toAddress) checks.push('Toアドレス 空');
+
+      const verdict = checks.length === 0 ? '送付対象 OK' : 'スキップ: ' + checks.join(' / ');
+      msg += `${r['請求ID']} | ${r['クライアントID']} : ${verdict}\n`;
+    });
+
+    Logger.log(msg);
+    ui.alert('メール送付対象 デバッグ', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
 }
 
 /**
