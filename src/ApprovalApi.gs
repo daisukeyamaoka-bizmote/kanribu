@@ -33,23 +33,40 @@ const ApprovalApi = {
   getInvoicesForApproval: function() {
     this.checkAccess();
 
+    // 必要なシートを一度だけ読み込む
     const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3);
     const clientMap = {};
     clients.forEach(c => clientMap[c['クライアントID']] = c);
 
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-    const pending = allInvoices.filter(r => String(r['ステータス'] || '').trim() === '入力済');
-
     const allLineItems = SheetUtil.readAsObjects(this.LINE_ITEM_SHEET, 1, 3);
+
+    // 前月実績マップ (クライアントID + yearMonth → 税込金額) を一度構築
+    const amountByClientYm = {};
+    allInvoices.forEach(r => {
+      amountByClientYm[r['クライアントID'] + '|' + normalizeYearMonth(r['対象月'])] = Number(r['税込金額']) || 0;
+    });
+
+    // 明細を請求ID別にグループ化
+    const lineItemsByInvoice = {};
+    allLineItems.forEach(li => {
+      const id = li['請求ID'];
+      if (!lineItemsByInvoice[id]) lineItemsByInvoice[id] = [];
+      lineItemsByInvoice[id].push(li);
+    });
+
+    const pending = allInvoices.filter(r => String(r['ステータス'] || '').trim() === '入力済');
 
     return pending.map(r => {
       const yearMonth = normalizeYearMonth(r['対象月']);
       const client = clientMap[r['クライアントID']] || {};
       const totalAmount = Number(r['税込金額']) || 0;
-      const variation = this._checkVariation(r['クライアントID'], totalAmount, yearMonth, allInvoices);
+      const lastYearMonth = this._getLastYearMonth(yearMonth);
+      const lastAmount = amountByClientYm[r['クライアントID'] + '|' + lastYearMonth] || 0;
+      const variation = this._buildVariation(totalAmount, lastAmount);
 
-      const lineItems = allLineItems
-        .filter(li => li['請求ID'] === r['請求ID'])
+      const lineItems = (lineItemsByInvoice[r['請求ID']] || [])
+        .slice()
         .sort((a, b) => (Number(a['行No']) || 0) - (Number(b['行No']) || 0))
         .map(li => ({
           rowNo: Number(li['行No']) || 0,
@@ -204,7 +221,26 @@ const ApprovalApi = {
   },
 
   /**
-   * 前月比チェック (税込金額ベース)
+   * 前月比オブジェクトを生成 (前月実績ありなしを引数で受ける版)
+   * @private
+   */
+  _buildVariation: function(currentTotal, lastAmount) {
+    if (!lastAmount) {
+      return { hasReference: false, lastAmount: 0, variation: 0, variationPct: 0, warning: false };
+    }
+    const variation = (currentTotal - lastAmount) / lastAmount;
+    return {
+      hasReference: true,
+      lastAmount: lastAmount,
+      variation: variation,
+      variationPct: Math.round(variation * 100),
+      warning: Math.abs(variation) > 0.2,
+    };
+  },
+
+  /**
+   * 前月比チェック (旧API互換、ループ内呼び出し版)
+   * 新規コードでは _buildVariation を使うこと
    * @private
    */
   _checkVariation: function(clientId, currentTotal, currentYearMonth, allInvoices) {

@@ -26,14 +26,32 @@ const InputFormApi = {
       );
     }
 
+    // 必要なシートを一度だけ読み込む(N+1 回避)
+    const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
+    const allTemplates = SheetUtil.readAsObjects(this.ITEM_TEMPLATE_SHEET, 1, 3);
     const clientMap = this._loadClientMap();
-    const rows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .filter(r => {
-        const status = String(r['ステータス'] || '').trim();
-        return status === '未入力' || status === '差戻';
-      });
 
-    const result = rows
+    // 前月実績マップを構築 (クライアントID + yearMonth → 税込金額)
+    const lastAmountMap = {};
+    allInvoices.forEach(r => {
+      const ym = normalizeYearMonth(r['対象月']);
+      lastAmountMap[r['クライアントID'] + '|' + ym] = Number(r['税込金額']) || 0;
+    });
+
+    // 品目テンプレートをクライアント別にグループ化
+    const templateMap = {};
+    allTemplates.forEach(t => {
+      const id = t['クライアントID'];
+      if (!templateMap[id]) templateMap[id] = [];
+      templateMap[id].push(t);
+    });
+
+    const pending = allInvoices.filter(r => {
+      const status = String(r['ステータス'] || '').trim();
+      return status === '未入力' || status === '差戻';
+    });
+
+    const result = pending
       .filter(r => {
         const client = clientMap[r['クライアントID']];
         if (!client) return false;
@@ -43,14 +61,28 @@ const InputFormApi = {
       .map(r => {
         const client = clientMap[r['クライアントID']];
         const yearMonth = normalizeYearMonth(r['対象月']);
+        const lastYearMonth = this._getLastYearMonth(yearMonth);
+        const lastKey = r['クライアントID'] + '|' + lastYearMonth;
+        const templates = (templateMap[r['クライアントID']] || [])
+          .slice()
+          .sort((a, b) => (Number(a['行No']) || 0) - (Number(b['行No']) || 0))
+          .map(t => ({
+            itemName: t['品目名'] || '',
+            unitPrice: Number(t['単価(税抜)']) || 0,
+            quantity: Number(t['数量']) || 1,
+            taxRate: Number(t['税率']) || 10,
+            unit: t['単位'] || '',
+            kind: t['固定/変動'] || '',
+          }));
+
         return {
           invoiceId: r['請求ID'],
           yearMonth: yearMonth,
           clientId: r['クライアントID'],
           clientName: client['企業名'],
           subjectTemplate: client['件名テンプレ'] || '',
-          lastMonthAmount: this._getLastMonthAmount(r['クライアントID'], yearMonth),
-          templates: this._getItemTemplates(r['クライアントID']),
+          lastMonthAmount: lastAmountMap[lastKey] || 0,
+          templates: templates,
           biko: r['備考'] || '',
           status: String(r['ステータス'] || '').trim(),
           memo: r['メモ'] || '',
@@ -58,7 +90,7 @@ const InputFormApi = {
       });
 
     Logger.log(`getMyPendingInvoices: email=${userEmail}, owner=${ownerName}, ` +
-               `pending(全体)=${rows.length}, mine=${result.length}`);
+               `pending(全体)=${pending.length}, mine=${result.length}`);
     return result;
   },
 

@@ -10,9 +10,12 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('請求管理')
     .addSubMenu(
-      ui.createMenu('請求業務')
-        .addItem('オーナー入力フォームを開く', 'openInputForm')
-        .addItem('承認画面を開く(経理)', 'openApprovalView')
+      ui.createMenu('オーナー')
+        .addItem('入力フォームを開く', 'openInputForm')
+    )
+    .addSubMenu(
+      ui.createMenu('経理')
+        .addItem('承認画面を開く', 'openApprovalView')
         .addSeparator()
         .addItem('発行プレビュー(承認済の確認)', 'previewApprovedIssuance')
         .addItem('一括発行(本番・freee連携)', 'bulkIssueApproved')
@@ -22,7 +25,9 @@ function onOpen() {
         .addItem('選択行を送付済にする(手動マーク)', 'markSelectedRowAsSent')
         .addSeparator()
         .addItem('入金消込チェック(手動)', 'manualReconcileCheck')
-        .addSeparator()
+    )
+    .addSubMenu(
+      ui.createMenu('管理')
         .addItem('月初の請求行を作成(手動)', 'manualCreateMonthlyInvoiceRows')
         .addItem('請求データをリセット(復旧用)', 'resetAndRecreateMonthlyInvoiceRows')
         .addSeparator()
@@ -30,22 +35,20 @@ function onOpen() {
         .addItem('月初トリガーを解除', 'removeMonthlyInvoiceTrigger')
         .addItem('入金消込トリガーを登録(毎月15日9時)', 'installReconcileTriggerMenu')
         .addItem('入金消込トリガーを解除', 'removeReconcileTriggerMenu')
-    )
-    .addSubMenu(
-      ui.createMenu('クライアント管理')
+        .addSeparator()
         .addItem('クライアント情報を freee と同期', 'syncClientsFromFreee')
         .addItem('freee取引先IDから新規クライアント追加', 'addClientFromFreeeMenu')
     )
     .addSubMenu(
-      ui.createMenu('開発者メニュー')
+      ui.createMenu('開発者')
         .addItem('1. 初期設定', 'setupInitialConfig')
         .addItem('2. freee認証開始', 'startFreeeOAuth')
         .addItem('3. freee認証状態確認', 'checkFreeeOAuthStatus')
         .addItem('4. freee認証リセット', 'resetFreeeOAuth')
+        .addItem('5. Slack Webhook URLを設定', 'setSlackWebhookUrlMenu')
         .addSeparator()
-        .addItem('5. freee接続テスト', 'testFreeeConnection')
-        .addItem('6. Slack通知テスト', 'testSlackNotify')
-        .addItem('7. Slack Webhook URLを設定', 'setSlackWebhookUrlMenu')
+        .addItem('6. freee接続テスト', 'testFreeeConnection')
+        .addItem('7. Slack通知テスト', 'testSlackNotify')
     )
     .addToUi();
 }
