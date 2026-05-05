@@ -32,6 +32,11 @@ function onOpen() {
         .addItem('入金消込トリガーを解除', 'removeReconcileTriggerMenu')
     )
     .addSubMenu(
+      ui.createMenu('クライアント管理')
+        .addItem('クライアント情報を freee と同期', 'syncClientsFromFreee')
+        .addItem('freee取引先IDから新規クライアント追加', 'addClientFromFreeeMenu')
+    )
+    .addSubMenu(
       ui.createMenu('開発者メニュー')
         .addItem('1. 初期設定', 'setupInitialConfig')
         .addItem('2. freee認証開始', 'startFreeeOAuth')
