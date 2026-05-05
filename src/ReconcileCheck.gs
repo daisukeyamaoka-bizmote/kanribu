@@ -23,7 +23,9 @@ const ReconcileCheck = {
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
     const targets = allInvoices.filter(r => {
       const status = String(r['ステータス'] || '').trim();
-      return (status === '送付済' || status === '未消込警告') && r['freee deal_id'];
+      // freee deal_id が空でも freee請求書ID があれば後で逆引きするので対象にする
+      return (status === '送付済' || status === '未消込警告') &&
+             (r['freee deal_id'] || r['freee請求書ID']);
     });
 
     if (targets.length === 0) {
@@ -45,7 +47,24 @@ const ReconcileCheck = {
 
     targets.forEach(r => {
       try {
-        const dealId = r['freee deal_id'];
+        // 1. deal_id が無ければ freee請求書ID から逆引きしてバックフィル
+        let dealId = r['freee deal_id'];
+        if (!dealId && r['freee請求書ID']) {
+          const inv = FreeeClient.getInvoice(r['freee請求書ID']);
+          dealId = inv.deal_id;
+          if (dealId) {
+            SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
+              'freee deal_id': dealId,
+            });
+            Logger.log(`deal_id バックフィル: ${r['請求ID']} → ${dealId}`);
+          }
+        }
+
+        if (!dealId) {
+          throw new Error('freee deal_id が取得できません(請求書に紐付く取引が見つからない)');
+        }
+
+        // 2. deal を取得して入金状況判定
         const deal = FreeeClient.getDeal(dealId);
         const dueAmount = Number(deal.due_amount);
         const dealStatus = String(deal.status || '').trim();
