@@ -203,11 +203,22 @@ const InvoiceMail = {
     const fileName = this._buildFileName(preview.clientName, preview.yearMonth, preview.invoiceId);
     pdfBlob.setName(fileName);
 
+    // CC に取引先CC + 強制CC(山岡)を併記。重複と To と同一アドレスは除外
+    const forcedCc = Config.getOrDefault('FORCED_CC_EMAIL', '').trim();
+    const ccList = [];
+    if (preview.ccAddress) ccList.push(preview.ccAddress);
+    if (forcedCc && forcedCc !== preview.toAddress) ccList.push(forcedCc);
+    const cc = ccList
+      .map(s => String(s).trim())
+      .filter(s => s)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .join(',');
+
     const options = {
       attachments: [pdfBlob],
       name: preview.senderName + ' (bizmote株式会社)',
     };
-    if (preview.ccAddress) options.cc = preview.ccAddress;
+    if (cc) options.cc = cc;
     if (preview.bccAddress) options.bcc = preview.bccAddress;
 
     MailApp.sendEmail(preview.toAddress, preview.subject, preview.body, options);
@@ -423,6 +434,22 @@ function dryRunSendInvoiceMails() {
  */
 function sendInvoiceMails() {
   const ui = SpreadsheetApp.getUi();
+
+  // 推奨アカウント以外で実行された場合の確認
+  const senderEmail = Session.getActiveUser().getEmail();
+  const preferredSender = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '');
+  if (preferredSender && senderEmail !== preferredSender) {
+    const proceed = ui.alert(
+      '差出人 確認',
+      `現在のアカウント: ${senderEmail}\n` +
+      `想定の差出人: ${preferredSender}\n\n` +
+      `通常は ${preferredSender} から送付する運用です。\n` +
+      `本当に ${senderEmail} で送信しますか?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (proceed !== ui.Button.YES) return;
+  }
+
   let targets;
   try {
     targets = InvoiceMail.getPendingMails();
@@ -437,12 +464,13 @@ function sendInvoiceMails() {
     return;
   }
 
-  const senderEmail = Session.getActiveUser().getEmail();
   const dailyQuota = MailApp.getRemainingDailyQuota();
+  const forcedCc = Config.getOrDefault('FORCED_CC_EMAIL', '');
 
   let confirmMsg = `差出人: ${senderEmail}\n` +
-                   `送信可能件数(本日残): ${dailyQuota}\n\n` +
-                   `送付対象: ${sendable.length}件\n` +
+                   `送信可能件数(本日残): ${dailyQuota}\n` +
+                   (forcedCc ? `常時CC: ${forcedCc}\n` : '') +
+                   `\n送付対象: ${sendable.length}件\n` +
                    sendable.map(t => `- ${t.clientName} → ${t.toAddress}`).join('\n');
   if (sendable.length > dailyQuota) {
     confirmMsg += `\n\n警告: 送信枠 (${dailyQuota}通) を超えています!`;

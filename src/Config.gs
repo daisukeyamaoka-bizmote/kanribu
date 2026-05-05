@@ -26,8 +26,12 @@ const Config = {
       'BANK_INFO': 'GMOあおぞらネット銀行 法人営業部 普通 1663349',
       // PDF保存先 Drive フォルダ (請求書_請求分)
       'PDF_DRIVE_FOLDER_ID': '1zCfE9PI4CD5l_yGZ9NYZF87oV_Bp5o_A',
+      // メール送付 推奨アカウント (これ以外で実行すると確認ダイアログ)
+      'PREFERRED_SENDER_EMAIL': 'miku.higuchi@bizmote.jp',
+      // メール送付時に必ず CC に入れるアドレス (取引先CCと別建て)
+      'FORCED_CC_EMAIL': 'daisuke.yamaoka@bizmote.jp',
       // Slack Incoming Webhook URL は機密情報のためコードに含めない。
-      // メニュー「開発者メニュー → 7. Slack Webhook URLを設定」 から登録する。
+      // メニュー「開発者メニュー → 5. Slack Webhook URLを設定」 から登録する。
     };
 
     Object.keys(defaults).forEach(key => {
