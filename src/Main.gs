@@ -44,6 +44,8 @@ function onOpen() {
         .addItem('4. freee認証リセット', 'resetFreeeOAuth')
         .addSeparator()
         .addItem('5. freee接続テスト', 'testFreeeConnection')
+        .addItem('6. Slack通知テスト', 'testSlackNotify')
+        .addItem('7. Slack Webhook URLを設定', 'setSlackWebhookUrlMenu')
     )
     .addToUi();
 }
@@ -184,6 +186,68 @@ function debugMyPendingInvoices() {
   } catch (e) {
     Logger.log(`debugエラー: ${e.message}\n${e.stack}`);
     ui.alert('デバッグエラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * メニューから呼ばれる: Slack Webhook URL をスクリプトプロパティに登録
+ * 機密情報のためコードに直書きしない運用
+ */
+function setSlackWebhookUrlMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const current = Config.getOrDefault('SLACK_WEBHOOK_URL', '');
+  const masked = current ? current.replace(/(.{30}).+/, '$1...(設定済)') : '(未設定)';
+
+  const resp = ui.prompt(
+    'Slack Webhook URL 設定',
+    `現在の値: ${masked}\n\n` +
+    'Slack Incoming Webhook URL を貼り付けてください\n' +
+    '(例: https://hooks.slack.com/services/T.../B.../...)\n\n' +
+    '※ 空欄でOKすると Slack 通知を無効化します',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const url = String(resp.getResponseText()).trim();
+
+  if (url && !url.startsWith('https://hooks.slack.com/')) {
+    ui.alert('URL形式エラー', 'https://hooks.slack.com/ で始まる URL を入力してください', ui.ButtonSet.OK);
+    return;
+  }
+
+  Config.set('SLACK_WEBHOOK_URL', url);
+  ui.alert(
+    '保存完了',
+    url
+      ? 'Slack Webhook URL を保存しました。「6. Slack通知テスト」で動作確認してください。'
+      : 'Slack Webhook URL を空にしました。今後は Logger.log にフォールバックします。',
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * メニューから呼ばれる: Slack通知のテスト送信
+ */
+function testSlackNotify() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const url = Config.getOrDefault('SLACK_WEBHOOK_URL', '');
+    if (!url) {
+      ui.alert(
+        'Slack通知テスト',
+        'SLACK_WEBHOOK_URL が未設定です。\n「1. 初期設定」を実行してから再度試してください。',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+    const timestamp = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss');
+    Notifier.slack(`Slack通知テスト ${timestamp} (bizmote 請求書管理システムから)`);
+    ui.alert(
+      'Slack通知テスト',
+      'テストメッセージを送信しました。\n通知先のSlackチャンネルを確認してください。',
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert('Slack通知テスト エラー', e.message, ui.ButtonSet.OK);
   }
 }
 

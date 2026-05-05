@@ -26,6 +26,8 @@ const Config = {
       'BANK_INFO': 'GMOあおぞらネット銀行 法人営業部 普通 1663349',
       // PDF保存先 Drive フォルダ (請求書_請求分)
       'PDF_DRIVE_FOLDER_ID': '1zCfE9PI4CD5l_yGZ9NYZF87oV_Bp5o_A',
+      // Slack Incoming Webhook URL は機密情報のためコードに含めない。
+      // メニュー「開発者メニュー → 7. Slack Webhook URLを設定」 から登録する。
     };
 
     Object.keys(defaults).forEach(key => {
