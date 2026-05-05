@@ -52,34 +52,34 @@ const InvoicePdfBuilder = {
 <title>請求書 ${this._escape(d.invoiceNumber || '')}</title>
 <style>
   @page { size: A4; margin: 18mm; }
-  body { font-family: 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', sans-serif; color: #222; font-size: 11pt; line-height: 1.5; }
-  .title { text-align: center; font-size: 22pt; letter-spacing: 8pt; padding: 6pt 0 18pt; border-bottom: 2px solid #1E3A5F; }
+  body { font-family: 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', sans-serif; color: #000; font-size: 11pt; line-height: 1.5; }
+  .title { text-align: center; font-size: 22pt; letter-spacing: 8pt; padding: 6pt 0 18pt; border-bottom: 2px solid #000; }
   .header { display: table; width: 100%; margin-top: 16pt; }
   .header-cell { display: table-cell; vertical-align: top; }
   .partner { font-size: 14pt; font-weight: bold; }
   .partner-suffix { font-size: 12pt; padding-left: 4pt; }
-  .partner-address { font-size: 10pt; color: #555; margin-top: 4pt; }
+  .partner-address { font-size: 10pt; color: #000; margin-top: 4pt; }
   .meta { font-size: 10pt; text-align: right; }
   .meta div { margin: 2pt 0; }
   .meta b { display: inline-block; min-width: 70pt; text-align: left; }
-  .subject { margin-top: 18pt; font-size: 13pt; font-weight: bold; padding: 8pt 12pt; background: #F5F8FB; border-left: 4pt solid #1E3A5F; }
-  .total-banner { margin-top: 14pt; padding: 12pt; text-align: right; background: #1E3A5F; color: white; font-size: 16pt; font-weight: bold; border-radius: 3pt; }
+  .subject { margin-top: 18pt; font-size: 13pt; font-weight: bold; padding: 8pt 0; }
+  .total-banner { margin-top: 14pt; padding: 12pt 0; text-align: right; color: #000; font-size: 16pt; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; }
   table.lines { width: 100%; border-collapse: collapse; margin-top: 18pt; font-size: 10pt; }
-  table.lines th { background: #1E3A5F; color: white; padding: 6pt 8pt; text-align: left; font-weight: 600; }
+  table.lines th { background: #000; color: #fff; padding: 6pt 8pt; text-align: left; font-weight: 600; }
   table.lines th.num { text-align: right; }
-  table.lines td { padding: 6pt 8pt; border-bottom: 1px solid #DDD; }
+  table.lines td { padding: 6pt 8pt; border-bottom: 1px solid #000; }
   table.lines td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .summary { margin-top: 8pt; width: 100%; }
   .summary table { margin-left: auto; border-collapse: collapse; }
   .summary td { padding: 4pt 12pt; }
-  .summary .label { text-align: right; color: #555; }
+  .summary .label { text-align: right; color: #000; }
   .summary .value { text-align: right; font-variant-numeric: tabular-nums; min-width: 100pt; }
-  .summary .total-row td { border-top: 2px solid #1E3A5F; font-weight: bold; font-size: 12pt; padding-top: 6pt; }
-  .biko { margin-top: 22pt; padding: 10pt 14pt; background: #FFFBE6; border-left: 4pt solid #FBC02D; white-space: pre-wrap; font-size: 10pt; }
-  .footer { margin-top: 28pt; padding-top: 14pt; border-top: 1px solid #DDD; display: table; width: 100%; font-size: 10pt; }
+  .summary .total-row td { border-top: 2px solid #000; font-weight: bold; font-size: 12pt; padding-top: 6pt; }
+  .biko { margin-top: 22pt; padding: 10pt 14pt; background: #F5F5F5; white-space: pre-wrap; font-size: 10pt; }
+  .footer { margin-top: 28pt; padding-top: 14pt; border-top: 1px solid #000; display: table; width: 100%; font-size: 10pt; }
   .footer-cell { display: table-cell; vertical-align: top; padding-right: 18pt; }
   .footer-cell:last-child { padding-right: 0; }
-  .footer-label { font-size: 9pt; color: #888; margin-bottom: 4pt; }
+  .footer-label { font-size: 9pt; color: #000; margin-bottom: 4pt; }
   .footer-value { line-height: 1.6; }
   .footer-value b { font-size: 11pt; }
 </style>
