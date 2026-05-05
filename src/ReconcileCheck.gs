@@ -18,14 +18,15 @@ const ReconcileCheck = {
 
   /**
    * 入金消込チェック本体
+   * freee invoice の payment_status を見て判定する。
+   * deal_id があれば併せて参照するが、必須ではない。
    */
   check: function() {
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
     const targets = allInvoices.filter(r => {
       const status = String(r['ステータス'] || '').trim();
-      // freee deal_id が空でも freee請求書ID があれば後で逆引きするので対象にする
-      return (status === '送付済' || status === '未消込警告') &&
-             (r['freee deal_id'] || r['freee請求書ID']);
+      // freee請求書ID があれば対象にする(deal_id は必須でない)
+      return (status === '送付済' || status === '未消込警告') && r['freee請求書ID'];
     });
 
     if (targets.length === 0) {
@@ -47,29 +48,33 @@ const ReconcileCheck = {
 
     targets.forEach(r => {
       try {
-        // 1. deal_id が無ければ freee請求書ID から逆引きしてバックフィル
-        let dealId = r['freee deal_id'];
-        if (!dealId && r['freee請求書ID']) {
-          const inv = FreeeClient.getInvoice(r['freee請求書ID']);
-          dealId = inv.deal_id;
-          if (dealId) {
-            SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
-              'freee deal_id': dealId,
-            });
-            Logger.log(`deal_id バックフィル: ${r['請求ID']} → ${dealId}`);
-          }
+        // freee invoice 取得 (deal でなく invoice を主とする)
+        const inv = FreeeClient.getInvoice(r['freee請求書ID']);
+
+        // 副作用: invoice.deal_id があってシート側が空ならバックフィル
+        if (inv.deal_id && !r['freee deal_id']) {
+          SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
+            'freee deal_id': inv.deal_id,
+          });
         }
 
-        if (!dealId) {
-          throw new Error('freee deal_id が取得できません(請求書に紐付く取引が見つからない)');
-        }
+        // 入金状況: payment_status を主、payment_status が不明なら deal を見る
+        const paymentStatus = String(inv.payment_status || '').trim();
+        const isSettled = paymentStatus === 'settled' || paymentStatus === 'paid';
 
-        // 2. deal を取得して入金状況判定
-        const deal = FreeeClient.getDeal(dealId);
-        const dueAmount = Number(deal.due_amount);
-        const dealStatus = String(deal.status || '').trim();
-        const isSettled = dealStatus === 'settled' || dueAmount === 0;
-        const dueDate = deal.due_date ? new Date(deal.due_date) : this._estimateDueDate(r);
+        // 期日: invoice.payment_date を優先、なければ deal を試す、それもなければ推定
+        let dueDate = null;
+        if (inv.payment_date) {
+          dueDate = new Date(inv.payment_date);
+        } else if (inv.deal_id) {
+          try {
+            const deal = FreeeClient.getDeal(inv.deal_id);
+            if (deal.due_date) dueDate = new Date(deal.due_date);
+          } catch (_) { /* ignore */ }
+        }
+        if (!dueDate) dueDate = this._estimateDueDate(r);
+        if (dueDate) dueDate.setHours(0, 0, 0, 0);
+
         const isPastDue = dueDate && today > dueDate;
 
         const client = clientMap[r['クライアントID']] || {};
@@ -98,13 +103,15 @@ const ReconcileCheck = {
             clientName: clientName,
             total: total,
             dueDate: dueDateStr,
-            dueAmount: dueAmount || total,
+            dueAmount: total, // payment_status 不明時は全額残として扱う
+            paymentStatus: paymentStatus,
           });
         } else {
           inGrace.push({
             invoiceId: r['請求ID'],
             clientName: clientName,
             dueDate: dueDateStr,
+            paymentStatus: paymentStatus,
           });
         }
 
