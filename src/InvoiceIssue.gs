@@ -131,25 +131,41 @@ const InvoiceIssue = {
     const payload = this.buildInvoicePayload(preview);
 
     if (dryRun) {
-      Logger.log(`[dryRun] ${preview.invoiceId} payload:\n${JSON.stringify(payload, null, 2)}`);
+      const dealPayload = this.buildDealPayload(preview);
+      Logger.log(`[dryRun] ${preview.invoiceId} invoice payload:\n${JSON.stringify(payload, null, 2)}`);
+      Logger.log(`[dryRun] ${preview.invoiceId} deal payload:\n${JSON.stringify(dealPayload, null, 2)}`);
       return {
         invoiceId: preview.invoiceId,
         clientName: preview.clientName,
         dryRun: true,
         payload: payload,
+        dealPayload: dealPayload,
       };
     }
 
     const response = FreeeClient.createInvoice(payload);
     if (!response) throw new Error('freee API レスポンスが空です');
 
-    // 旧APIは {invoice: {id, deal_id, ...}} 、新APIは直接 {id, deal_id, ...} の可能性があるため両対応
+    // FreeeClient.createInvoice は data.invoice を返す
     const inv = response.invoice || response;
     const freeeInvoiceId = inv.id;
-    const freeeDealId = inv.deal_id || (response.deal && response.deal.id) || '';
 
     if (!freeeInvoiceId) {
       throw new Error('freee API レスポンスから請求書ID を取得できません: ' + JSON.stringify(response).substring(0, 500));
+    }
+
+    // 取引(売掛金/売上の仕訳)を自動作成。
+    // freee請求書APIには取引登録機能が無いため、会計API(/api/1/deals)で別途登録する。
+    // 取引作成に失敗しても請求書発行はロールバックせず、警告通知して手動登録で救済する
+    // (再実行すると請求書が重複作成されるため)。
+    let freeeDealId = '';
+    let dealError = null;
+    try {
+      const deal = FreeeClient.createDeal(this.buildDealPayload(preview));
+      freeeDealId = (deal && deal.id) ? deal.id : '';
+    } catch (e) {
+      dealError = e.message;
+      Logger.log(`取引作成失敗 ${preview.invoiceId}: ${e.message}`);
     }
 
     SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
@@ -158,13 +174,21 @@ const InvoiceIssue = {
       'freee deal_id': freeeDealId,
     });
 
-    Logger.log(`発行成功 ${preview.invoiceId} → freee invoice ${freeeInvoiceId}, deal ${freeeDealId || '(none)'}`);
+    if (dealError) {
+      Notifier.slack(
+        `警告: ${preview.clientName} ${preview.invoiceId} は請求書を発行しましたが、` +
+        `取引(仕訳)の自動登録に失敗しました。freeeで手動登録してください。理由: ${dealError}`
+      );
+    }
+
+    Logger.log(`発行成功 ${preview.invoiceId} → freee invoice ${freeeInvoiceId}, deal ${freeeDealId || '(取引登録失敗)'}`);
 
     return {
       invoiceId: preview.invoiceId,
       clientName: preview.clientName,
       freeeInvoiceId: freeeInvoiceId,
       freeeDealId: freeeDealId || null,
+      dealError: dealError,
     };
   },
 
@@ -227,6 +251,42 @@ const InvoiceIssue = {
       payload.invoice_note = preview.biko;
     }
     return payload;
+  },
+
+  /**
+   * freee 会計API 取引(deal) 作成 payload を構築
+   * type:'income' + payments省略 → 未決済取引(借方:売掛金 / 貸方:売上高+仮受消費税)。
+   * 売掛金(借方)はfreeeが事業所設定の既定科目で自動付与するため details には書かない。
+   * 明細は請求書payloadと同じ計算(税込/行別四捨五入)で揃え、税込合計が一致するようにする。
+   * @param {object} preview - getApprovedInvoices() の1要素
+   * @return {object} freee 会計API /api/1/deals へのリクエスト本体
+   */
+  buildDealPayload: function(preview) {
+    const companyId = Config.getNumber('FREEE_COMPANY_ID');
+    const accountItemSales = Config.getNumber('ACCOUNT_ITEM_SALES');
+    const taxCode10 = Config.getNumber('TAX_CODE_10');
+
+    const details = preview.lineItems.map(li => {
+      const subtotal = li.unitPrice * li.quantity;
+      const vat = Math.round(subtotal * (li.taxRate / 100));
+      return {
+        account_item_id: accountItemSales,
+        tax_code: taxCode10,
+        amount: subtotal + vat,   // 税込金額
+        vat: vat,                 // 消費税額
+        description: li.itemName,
+      };
+    });
+
+    return {
+      company_id: companyId,
+      issue_date: preview.issueDate,   // 発生日(取引日) = 対象月末
+      due_date: preview.dueDate,       // 期日 = 入金期日(翌月末)
+      type: 'income',
+      partner_id: preview.partnerId,
+      ref_number: preview.invoiceId,   // 管理番号に内部請求IDを記録(突合用)
+      details: details,
+    };
   },
 
   /**
@@ -386,6 +446,11 @@ function bulkIssueApproved() {
               `失敗: ${result.failed.length}件`;
     if (result.issued.length > 0) {
       msg += '\n\n発行成功:\n' + result.issued.map(i => `- ${i.clientName}: freee請求書ID ${i.freeeInvoiceId}`).join('\n');
+    }
+    const dealErrors = result.issued.filter(i => i.dealError);
+    if (dealErrors.length > 0) {
+      msg += '\n\n【注意】取引(仕訳)の自動登録に失敗(freeeで手動登録してください):\n' +
+             dealErrors.map(i => `- ${i.clientName}: ${i.dealError}`).join('\n');
     }
     if (result.failed.length > 0) {
       msg += '\n\n失敗内訳:\n' + result.failed.map(f => `- ${f.clientName} (${f.invoiceId}): ${f.error}`).join('\n');

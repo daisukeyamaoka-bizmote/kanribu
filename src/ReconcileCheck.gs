@@ -18,8 +18,8 @@ const ReconcileCheck = {
 
   /**
    * 入金消込チェック本体
-   * freee invoice の payment_status を見て判定する。
-   * deal_id があれば併せて参照するが、必須ではない。
+   * 自前で登録した取引(売掛金)の残額(due_amount)を主の判定材料にする。
+   * deal_id が無い旧データのみ invoice.payment_status にフォールバックする。
    */
   check: function() {
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
@@ -48,29 +48,31 @@ const ReconcileCheck = {
 
     targets.forEach(r => {
       try {
-        // freee invoice 取得 (deal でなく invoice を主とする)
-        const inv = FreeeClient.getInvoice(r['freee請求書ID']);
-
-        // 副作用: invoice.deal_id があってシート側が空ならバックフィル
-        if (inv.deal_id && !r['freee deal_id']) {
-          SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
-            'freee deal_id': inv.deal_id,
-          });
-        }
-
-        // 入金状況: payment_status を主、payment_status が不明なら deal を見る
-        const paymentStatus = String(inv.payment_status || '').trim();
-        const isSettled = paymentStatus === 'settled' || paymentStatus === 'paid';
-
-        // 期日: invoice.payment_date を優先、なければ deal を試す、それもなければ推定
+        // 入金状況の判定。
+        // 本システムは請求書とは別に会計API取引(売掛金)を自前で登録しているため、
+        // その取引の残額(due_amount)を主の判定材料にする(残額0 = 消込完了)。
+        // deal_id が無い旧データのみ invoice.payment_status にフォールバックする。
+        let isSettled = false;
+        let paymentStatus = '';
         let dueDate = null;
-        if (inv.payment_date) {
-          dueDate = new Date(inv.payment_date);
-        } else if (inv.deal_id) {
-          try {
-            const deal = FreeeClient.getDeal(inv.deal_id);
-            if (deal.due_date) dueDate = new Date(deal.due_date);
-          } catch (_) { /* ignore */ }
+        const dealId = r['freee deal_id'];
+
+        if (dealId) {
+          const deal = FreeeClient.getDeal(dealId);
+          isSettled = Number(deal.due_amount) === 0;
+          paymentStatus = isSettled ? 'settled' : 'unsettled';
+          if (deal.due_date) dueDate = new Date(deal.due_date);
+        } else {
+          const inv = FreeeClient.getInvoice(r['freee請求書ID']);
+          // invoice.deal_id があればバックフィル(次回からは取引主判定になる)
+          if (inv.deal_id) {
+            SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
+              'freee deal_id': inv.deal_id,
+            });
+          }
+          paymentStatus = String(inv.payment_status || '').trim();
+          isSettled = paymentStatus === 'settled' || paymentStatus === 'paid';
+          if (inv.payment_date) dueDate = new Date(inv.payment_date);
         }
         if (!dueDate) dueDate = this._estimateDueDate(r);
         if (dueDate) dueDate.setHours(0, 0, 0, 0);

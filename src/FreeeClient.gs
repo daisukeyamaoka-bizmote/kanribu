@@ -88,6 +88,17 @@ const FreeeClient = {
   },
 
   /**
+   * 取引(deal)を作成する (会計API)
+   * 請求書APIには取引登録機能が無いため、売掛金/売上の仕訳はこちらで登録する。
+   * @param {object} payload - deal 作成パラメータ (company_id を含むこと)
+   * @return {object} 作成された deal
+   */
+  createDeal: function(payload) {
+    const data = this.request('accounting', 'POST', '/api/1/deals', payload);
+    return data.deal;
+  },
+
+  /**
    * 請求書をfreeeから取引先にメール送信させる (freee内部の送付機能を使う)
    * @param {object} payload - sendings API の本体
    * @return {object} レスポンス
