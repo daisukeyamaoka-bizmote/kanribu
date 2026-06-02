@@ -54,8 +54,6 @@ const InvoiceFlow = {
       added++;
     });
 
-    Notifier.slack(`${yearMonth} の請求行を ${added} 件自動作成しました。各オーナーは入力をお願いします。`);
-
     return {
       yearMonth: yearMonth,
       added: added,
@@ -181,7 +179,6 @@ function createMonthlyInvoiceRowsTrigger() {
     Logger.log(`月初トリガー実行: 追加${result.added}件, スキップ${result.skipped.length}件`);
   } catch (e) {
     Logger.log(`月初トリガーエラー: ${e.message}`);
-    Notifier.slack(`月初の請求行作成でエラーが発生しました: ${e.message}`);
     throw e;
   }
 }

@@ -46,6 +46,7 @@ function onOpen() {
         .addItem('3. freee認証状態確認', 'checkFreeeOAuthStatus')
         .addItem('4. freee認証リセット', 'resetFreeeOAuth')
         .addItem('5. Slack Webhook URLを設定', 'setSlackWebhookUrlMenu')
+        .addItem('5b. Slack メンションユーザIDを設定', 'setSlackMentionUserIdMenu')
         .addSeparator()
         .addItem('6. freee接続テスト', 'testFreeeConnection')
         .addItem('7. Slack通知テスト', 'testSlackNotify')
@@ -228,6 +229,47 @@ function setSlackWebhookUrlMenu() {
 }
 
 /**
+ * メニューから呼ばれる: 送付完了通知でメンションする Slack ユーザID を登録
+ * Slack のユーザ名(@miku)ではなく、Slack 内部の Member ID(U で始まる文字列) が必要。
+ * 取得方法: Slack でメンション対象ユーザのプロフィールを開く → その他 → メンバーIDをコピー
+ */
+function setSlackMentionUserIdMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const current = Config.getOrDefault('SLACK_MENTION_USER_ID', '');
+
+  const resp = ui.prompt(
+    'Slack メンションユーザID 設定',
+    `現在の値: ${current || '(未設定)'}\n\n` +
+    '送付完了通知でメンション(@通知)する Slack ユーザの Member ID を入力してください\n' +
+    '(例: U01ABCDEFGH)\n\n' +
+    '取得方法: Slack で対象ユーザのプロフィール → その他 → メンバーIDをコピー\n' +
+    '※ 空欄でOKするとメンション無しの通知になります',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const id = String(resp.getResponseText()).trim();
+
+  if (id && !/^[UW][A-Z0-9]{5,}$/.test(id)) {
+    ui.alert(
+      'ID形式エラー',
+      'Slack Member ID は U または W で始まる英数字です(例: U01ABCDEFGH)。\n' +
+      'ユーザ名(@miku 等)ではなく Member ID をコピーしてください。',
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  Config.set('SLACK_MENTION_USER_ID', id);
+  ui.alert(
+    '保存完了',
+    id
+      ? `メンションユーザID を ${id} に設定しました。`
+      : 'メンションユーザID を空にしました。',
+    ui.ButtonSet.OK
+  );
+}
+
+/**
  * メニューから呼ばれる: Slack通知のテスト送信
  */
 function testSlackNotify() {
@@ -243,7 +285,9 @@ function testSlackNotify() {
       return;
     }
     const timestamp = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss');
-    Notifier.slack(`Slack通知テスト ${timestamp} (bizmote 請求書管理システムから)`);
+    const mentionId = Config.getOrDefault('SLACK_MENTION_USER_ID', '').trim();
+    const mention = mentionId ? `<@${mentionId}> ` : '';
+    Notifier.slack(`${mention}Slack通知テスト ${timestamp} (bizmote 請求書管理システムから)`);
     ui.alert(
       'Slack通知テスト',
       'テストメッセージを送信しました。\n通知先のSlackチャンネルを確認してください。',

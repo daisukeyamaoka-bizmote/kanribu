@@ -32,6 +32,9 @@ const Config = {
       'FORCED_CC_EMAIL': 'daisuke.yamaoka@bizmote.jp',
       // Slack Incoming Webhook URL は機密情報のためコードに含めない。
       // メニュー「開発者メニュー → 5. Slack Webhook URLを設定」 から登録する。
+      // 送付完了通知でメンションする Slack ユーザID (例: 'U01234567')
+      // メニュー「開発者メニュー → Slack メンションユーザIDを設定」から登録する
+      'SLACK_MENTION_USER_ID': '',
     };
 
     Object.keys(defaults).forEach(key => {

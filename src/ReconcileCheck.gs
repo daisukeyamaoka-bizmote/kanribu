@@ -124,20 +124,6 @@ const ReconcileCheck = {
       }
     });
 
-    // Slack 通知
-    if (pastDue.length > 0) {
-      const lines = pastDue.map(p =>
-        `- ${p.clientName} ${p.invoiceId} (期日:${p.dueDate}) 残額¥${p.dueAmount.toLocaleString()}`
-      ).join('\n');
-      Notifier.slack(
-        `【未入金警告】期日超過の請求書が ${pastDue.length}件 あります:\n${lines}`
-      );
-    }
-    if (settled.length > 0) {
-      const lines = settled.map(s => `- ${s.clientName} ${s.invoiceId} 税込¥${s.total.toLocaleString()}`).join('\n');
-      Notifier.slack(`入金消込完了: ${settled.length}件\n${lines}`);
-    }
-
     return {
       checked: targets.length,
       settled: settled,
@@ -206,7 +192,6 @@ function checkReconciliationTrigger() {
     );
   } catch (e) {
     Logger.log(`入金消込トリガーエラー: ${e.message}`);
-    Notifier.slack(`入金消込チェックでエラー: ${e.message}`);
     throw e;
   }
 }

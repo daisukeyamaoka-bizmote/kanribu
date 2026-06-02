@@ -94,11 +94,6 @@ const InvoiceIssue = {
         Utilities.sleep(300); // freee API rate limit
       });
 
-      Notifier.slack(
-        `請求書${dryRun ? '発行(ドライラン)' : '発行'} 完了: ` +
-        `成功 ${issued.length}件, 失敗 ${failed.length}件 / 合計 ${approved.length}件`
-      );
-
       return {
         issued: issued,
         failed: failed,
@@ -174,12 +169,7 @@ const InvoiceIssue = {
       'freee deal_id': freeeDealId,
     });
 
-    if (dealError) {
-      Notifier.slack(
-        `警告: ${preview.clientName} ${preview.invoiceId} は請求書を発行しましたが、` +
-        `取引(仕訳)の自動登録に失敗しました。freeeで手動登録してください。理由: ${dealError}`
-      );
-    }
+    // 取引登録失敗は発行完了ダイアログにも警告表示される(Slack通知は廃止)
 
     Logger.log(`発行成功 ${preview.invoiceId} → freee invoice ${freeeInvoiceId}, deal ${freeeDealId || '(取引登録失敗)'}`);
 

@@ -119,11 +119,6 @@ const ApprovalApi = {
         '承認日時': new Date(),
       });
 
-      const total = Number(row['税込金額']) || 0;
-      Notifier.slack(
-        `請求承認: ${row['クライアントID']} ${normalizeYearMonth(row['対象月'])} 税込¥${total.toLocaleString()}`
-      );
-
       return { success: true, invoiceId: invoiceId };
     } finally {
       lock.releaseLock();
@@ -158,10 +153,6 @@ const ApprovalApi = {
         'ステータス': '差戻',
         'メモ': newMemo,
       });
-
-      Notifier.slack(
-        `請求差戻: ${row['クライアントID']} ${normalizeYearMonth(row['対象月'])} 理由: ${trimmedReason}`
-      );
 
       return { success: true, invoiceId: invoiceId };
     } finally {
@@ -201,11 +192,6 @@ const ApprovalApi = {
             '承認者': userEmail,
             '承認日時': now,
           });
-
-          const total = Number(row['税込金額']) || 0;
-          Notifier.slack(
-            `請求承認(一括): ${row['クライアントID']} ${normalizeYearMonth(row['対象月'])} 税込¥${total.toLocaleString()}`
-          );
 
           results.push({ invoiceId: id, success: true });
         } catch (e) {

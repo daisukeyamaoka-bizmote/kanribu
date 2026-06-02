@@ -255,6 +255,8 @@ const InvoiceMail = {
     return {
       invoiceId: preview.invoiceId,
       clientName: preview.clientName,
+      yearMonth: preview.yearMonth,
+      total: preview.total,
       to: preview.toAddress,
       cc: preview.ccAddress,
       bcc: preview.bccAddress,
@@ -293,10 +295,16 @@ const InvoiceMail = {
         Utilities.sleep(500);
       });
 
-      Notifier.slack(
-        `請求書メール${dryRun ? '送付(ドライラン)' : '送付'}: ` +
-        `成功 ${sent.length}件, スキップ ${skipped.length}件, 失敗 ${failed.length}件 / 合計 ${targets.length}件`
-      );
+      // メール送付完了通知 (実送信のみ・送付できた請求書一覧を投稿)。
+      // ドライラン / 送付ゼロ件 / 失敗のみ の場合は通知しない。
+      if (!dryRun && sent.length > 0) {
+        const mentionId = Config.getOrDefault('SLACK_MENTION_USER_ID', '').trim();
+        const mention = mentionId ? `<@${mentionId}> ` : '';
+        const list = sent.map(s =>
+          `- ${s.clientName} ${s.yearMonth} 税込¥${Number(s.total || 0).toLocaleString()} → ${s.to}`
+        ).join('\n');
+        Notifier.slack(`${mention}請求書メール送付完了 (${sent.length}件)\n${list}`);
+      }
 
       return {
         sent: sent,
