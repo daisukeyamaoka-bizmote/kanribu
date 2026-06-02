@@ -4,13 +4,15 @@
  * - 対象: ステータス=発行済 + 送付完了日時 が空 + 送付方法=メール の請求書
  * - PDFは GAS 側で HTML テンプレートから自動生成(InvoicePdfBuilder)
  *   freee API は PDF ダウンロードを公式に提供していないため、自前で組み立てる
- * - 送信は Gmail (MailApp.sendEmail) — スクリプト実行者のアカウントから送信
+ * - 送信は Gmail (GmailApp.sendEmail) で from オプション指定 — 誰が実行しても
+ *   PREFERRED_SENDER_EMAIL (樋口 miku.higuchi@bizmote.jp) から送信される
  * - 送信成功後 ステータス→送付済 + 送付完了日時を記録
  * - dryRun フラグで実送信せず本文をログ出力のみに切替可能
  *
  * 差出人:
- *   スクリプトを実行している Google アカウント (Session.getActiveUser()) から送信。
- *   山岡 → daisuke.yamaoka@bizmote.jp / 樋口 → miku.higuchi@bizmote.jp など。
+ *   PREFERRED_SENDER_EMAIL (Config) を from に指定して送信。
+ *   実行者の Gmail に送信元エイリアスとして登録されている必要がある
+ *   (Gmail 設定 → アカウントとインポート → 「他のメールアドレスを追加」)。
  */
 const InvoiceMail = {
   INVOICE_SHEET: '03_請求一覧',
@@ -63,7 +65,8 @@ const InvoiceMail = {
 
     const allLineItems = SheetUtil.readAsObjects(this.LINE_ITEM_SHEET, 1, 3);
 
-    const senderEmail = Session.getActiveUser().getEmail();
+    const executor = Session.getActiveUser().getEmail();
+    const senderEmail = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '') || executor;
     const senderName = UserMapping.getDisplayName(senderEmail) || senderEmail.split('@')[0];
 
     return targets.map(r => {
@@ -214,14 +217,33 @@ const InvoiceMail = {
       .filter((v, i, a) => a.indexOf(v) === i)
       .join(',');
 
+    // 「誰が実行しても miku.higuchi(樋口)から送信」させるため GmailApp.sendEmail の
+     // from オプションを使う。実行者の Gmail で送信元エイリアスとして登録済みである必要がある。
+    const forcedSender = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '') ||
+                         Session.getActiveUser().getEmail();
     const options = {
       attachments: [pdfBlob],
+      from: forcedSender,
       name: preview.senderName + ' (bizmote株式会社)',
     };
     if (cc) options.cc = cc;
     if (preview.bccAddress) options.bcc = preview.bccAddress;
 
-    MailApp.sendEmail(preview.toAddress, preview.subject, preview.body, options);
+    try {
+      GmailApp.sendEmail(preview.toAddress, preview.subject, preview.body, options);
+    } catch (e) {
+      // 送信元エイリアスが実行者の Gmail に登録されていないと freee 認証とは別のエラーが出る
+      const msg = String(e.message || '');
+      if (/from|alias|sender|delegated/i.test(msg)) {
+        const exec = Session.getActiveUser().getEmail();
+        throw new Error(
+          `${forcedSender} を実行者(${exec})の Gmail で「送信元アドレス(別アドレスでメールを送信)」として登録してください。\n` +
+          `Gmail → 設定 → アカウントとインポート → 「他のメールアドレスを追加」で ${forcedSender} を追加し、確認メールを承認すると有効になります。\n\n` +
+          `元エラー: ${msg}`
+        );
+      }
+      throw e;
+    }
 
     SheetUtil.updateRow(this.INVOICE_SHEET, row._rowNumber, {
       'ステータス': '送付済',
@@ -386,7 +408,8 @@ function previewInvoiceMails() {
       return;
     }
 
-    const senderEmail = Session.getActiveUser().getEmail();
+    const executor = Session.getActiveUser().getEmail();
+    const senderEmail = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '') || executor;
     const senderName = UserMapping.getDisplayName(senderEmail) || senderEmail;
 
     const lines = targets.map((t, i) => {
@@ -397,7 +420,7 @@ function previewInvoiceMails() {
              `   税込: ¥${t.total.toLocaleString()} 期日: ${t.dueDate}`;
     }).join('\n\n');
 
-    const msg = `差出人: ${senderEmail} (表示名: ${senderName})\n` +
+    const msg = `差出人: ${senderEmail} (表示名: ${senderName} / 実行者: ${executor})\n` +
                 `対象: ${targets.length}件\n\n` + lines;
     Logger.log(msg);
     ui.alert('メール送付プレビュー', msg, ui.ButtonSet.OK);
@@ -435,20 +458,9 @@ function dryRunSendInvoiceMails() {
 function sendInvoiceMails() {
   const ui = SpreadsheetApp.getUi();
 
-  // 推奨アカウント以外で実行された場合の確認
-  const senderEmail = Session.getActiveUser().getEmail();
-  const preferredSender = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '');
-  if (preferredSender && senderEmail !== preferredSender) {
-    const proceed = ui.alert(
-      '差出人 確認',
-      `現在のアカウント: ${senderEmail}\n` +
-      `想定の差出人: ${preferredSender}\n\n` +
-      `通常は ${preferredSender} から送付する運用です。\n` +
-      `本当に ${senderEmail} で送信しますか?`,
-      ui.ButtonSet.YES_NO
-    );
-    if (proceed !== ui.Button.YES) return;
-  }
+  // 誰が実行しても PREFERRED_SENDER_EMAIL (樋口) から送信される
+  const executor = Session.getActiveUser().getEmail();
+  const forcedSender = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '') || executor;
 
   let targets;
   try {
@@ -467,7 +479,7 @@ function sendInvoiceMails() {
   const dailyQuota = MailApp.getRemainingDailyQuota();
   const forcedCc = Config.getOrDefault('FORCED_CC_EMAIL', '');
 
-  let confirmMsg = `差出人: ${senderEmail}\n` +
+  let confirmMsg = `差出人: ${forcedSender} (実行者: ${executor})\n` +
                    `送信可能件数(本日残): ${dailyQuota}\n` +
                    (forcedCc ? `常時CC: ${forcedCc}\n` : '') +
                    `\n送付対象: ${sendable.length}件\n` +
