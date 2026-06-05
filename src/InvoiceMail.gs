@@ -201,6 +201,7 @@ const InvoiceMail = {
       companyName: Config.getOrDefault('COMPANY_NAME', 'bizmote株式会社'),
       companyZip: Config.getOrDefault('COMPANY_ZIP', ''),
       companyAddress: Config.getOrDefault('COMPANY_ADDRESS', ''),
+      companyRegNo: Config.getOrDefault('COMPANY_INVOICE_REGISTRATION_NUMBER', ''),
       bankInfo: Config.getOrDefault('BANK_INFO', ''),
     });
     const fileName = this._buildFileName(preview.clientName, preview.yearMonth, preview.invoiceId);
@@ -371,6 +372,7 @@ const InvoiceMail = {
       companyName: Config.getOrDefault('COMPANY_NAME', 'bizmote株式会社'),
       companyZip: Config.getOrDefault('COMPANY_ZIP', ''),
       companyAddress: Config.getOrDefault('COMPANY_ADDRESS', ''),
+      companyRegNo: Config.getOrDefault('COMPANY_INVOICE_REGISTRATION_NUMBER', ''),
       bankInfo: Config.getOrDefault('BANK_INFO', ''),
     });
   },

@@ -21,6 +21,7 @@ const InvoicePdfBuilder = {
    *   - total: 税込合計
    *   - biko: 備考(空可)
    *   - companyName / companyZip / companyAddress / bankInfo
+   *   - companyRegNo: インボイス制度 適格請求書発行事業者 登録番号 (T+13桁)
    * @return {Blob} application/pdf
    */
   build: function(d) {
@@ -44,6 +45,23 @@ const InvoicePdfBuilder = {
         <td class="num">¥${(Number(li.subtotal) || 0).toLocaleString()}</td>
       </tr>
     `).join('');
+
+    // 適格請求書(インボイス) 要件: 税率ごとに区分した対価の合計額・消費税額・適用税率を表示
+    const taxBreakdownMap = {};
+    (d.lineItems || []).forEach(li => {
+      const rate = Number(li.taxRate) || 10;
+      const subtotal = Number(li.subtotal) || 0;
+      const vat = Math.round(subtotal * (rate / 100));
+      if (!taxBreakdownMap[rate]) taxBreakdownMap[rate] = { subtotal: 0, vat: 0 };
+      taxBreakdownMap[rate].subtotal += subtotal;
+      taxBreakdownMap[rate].vat += vat;
+    });
+    const taxBreakdownRows = Object.keys(taxBreakdownMap)
+      .sort((a, b) => Number(b) - Number(a))
+      .map(rate => `
+        <tr><td class="label">${rate}%対象(税抜)</td><td class="value">¥${taxBreakdownMap[rate].subtotal.toLocaleString()}</td></tr>
+        <tr><td class="label">${rate}%消費税</td><td class="value">¥${taxBreakdownMap[rate].vat.toLocaleString()}</td></tr>
+      `).join('');
 
     return `<!DOCTYPE html>
 <html>
@@ -121,7 +139,7 @@ const InvoicePdfBuilder = {
   <div class="summary">
     <table>
       <tr><td class="label">小計(税抜)</td><td class="value">¥${(Number(d.subtotal) || 0).toLocaleString()}</td></tr>
-      <tr><td class="label">消費税</td><td class="value">¥${(Number(d.tax) || 0).toLocaleString()}</td></tr>
+      ${taxBreakdownRows}
       <tr class="total-row"><td class="label">税込合計</td><td class="value">¥${(Number(d.total) || 0).toLocaleString()}</td></tr>
     </table>
   </div>
@@ -135,6 +153,7 @@ const InvoicePdfBuilder = {
         <b>${this._escape(d.companyName || '')}</b><br>
         ${this._escape(d.companyZip || '')}<br>
         ${this._escape(d.companyAddress || '')}
+        ${d.companyRegNo ? `<br>登録番号: ${this._escape(d.companyRegNo)}` : ''}
       </div>
     </div>
     <div class="footer-cell" style="width: 50%;">
