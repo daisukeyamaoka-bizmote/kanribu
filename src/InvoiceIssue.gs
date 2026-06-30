@@ -117,9 +117,13 @@ const InvoiceIssue = {
     }
 
     // 最新ステータスを再取得 (発行直前の差し戻し検知)
+    // 請求ID + 対象月 で照合(同一IDが対象月違いで存在しても誤マッチしない)
     const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-    const row = allRows.find(r => r['請求ID'] === preview.invoiceId);
-    if (!row) throw new Error(`請求が見つかりません: ${preview.invoiceId}`);
+    const row = allRows.find(r =>
+      r['請求ID'] === preview.invoiceId &&
+      normalizeYearMonth(r['対象月']) === preview.yearMonth
+    );
+    if (!row) throw new Error(`請求が見つかりません: ${preview.invoiceId} (対象月: ${preview.yearMonth})`);
     const status = String(row['ステータス'] || '').trim();
     if (status !== '承認済') throw new Error(`ステータスが承認済ではありません (${status})`);
 

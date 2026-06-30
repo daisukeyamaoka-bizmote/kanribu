@@ -163,10 +163,13 @@ const InvoiceMail = {
       throw new Error(preview.skipReason);
     }
 
-    // ステータス再チェック
+    // ステータス再チェック (請求ID + 対象月 で照合)
     const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-    const row = allRows.find(r => r['請求ID'] === preview.invoiceId);
-    if (!row) throw new Error(`請求が見つかりません: ${preview.invoiceId}`);
+    const row = allRows.find(r =>
+      r['請求ID'] === preview.invoiceId &&
+      normalizeYearMonth(r['対象月']) === preview.yearMonth
+    );
+    if (!row) throw new Error(`請求が見つかりません: ${preview.invoiceId} (対象月: ${preview.yearMonth})`);
     const status = String(row['ステータス'] || '').trim();
     if (status !== '発行済') throw new Error(`ステータスが発行済ではありません (${status})`);
     if (row['送付完了日時']) throw new Error('既に送付済みです');
@@ -332,11 +335,17 @@ const InvoiceMail = {
 
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const idCol = headers.indexOf('請求ID');
+    const ymCol = headers.indexOf('対象月');
     const invoiceId = sheet.getRange(row, idCol + 1).getValue();
     if (!invoiceId) throw new Error('請求IDが空です');
+    // 選択行の対象月も併用して、同一IDが複数月にあっても選択行を正しく特定する
+    const selectedYm = ymCol >= 0 ? normalizeYearMonth(sheet.getRange(row, ymCol + 1).getValue()) : null;
 
     const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-    const r = allRows.find(x => x['請求ID'] === invoiceId);
+    const r = allRows.find(x =>
+      x['請求ID'] === invoiceId &&
+      (selectedYm === null || normalizeYearMonth(x['対象月']) === selectedYm)
+    );
     if (!r) throw new Error(`請求が見つかりません: ${invoiceId}`);
 
     const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3);
