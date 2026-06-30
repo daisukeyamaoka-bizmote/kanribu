@@ -28,11 +28,14 @@ const InvoiceFlow = {
     const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3)
       .filter(c => String(c['ステータス'] || '').trim() === '稼働中');
 
-    const existingRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3)
-      .filter(r => normalizeYearMonth(r['対象月']) === yearMonth);
+    const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
+    const existingRows = allRows.filter(r => normalizeYearMonth(r['対象月']) === yearMonth);
     const existingClientIds = new Set(existingRows.map(r => r['クライアントID']));
+    // シート全体の既存請求IDを集合化し、過去データと衝突するIDを発番しない
+    // (対象月を手動で書き換えた等で同一IDが残っていても二重発番を防ぐ)
+    const allInvoiceIds = new Set(allRows.map(r => String(r['請求ID'] || '').trim()));
 
-    const baseSeq = existingRows.length;
+    let nextSeq = existingRows.length;
     const yyyymm = yearMonth.replace('-', '');
 
     let added = 0;
@@ -42,8 +45,13 @@ const InvoiceFlow = {
         skipped.push(client['企業名']);
         return;
       }
-      const seq = String(baseSeq + added + 1).padStart(3, '0');
-      const invoiceId = `INV-${yyyymm}-${seq}`;
+      // 既存IDと衝突しない連番になるまでインクリメント
+      let invoiceId;
+      do {
+        nextSeq++;
+        invoiceId = `INV-${yyyymm}-${String(nextSeq).padStart(3, '0')}`;
+      } while (allInvoiceIds.has(invoiceId));
+      allInvoiceIds.add(invoiceId);
 
       SheetUtil.appendRow(this.INVOICE_SHEET, {
         '請求ID': invoiceId,

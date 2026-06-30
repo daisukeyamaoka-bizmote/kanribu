@@ -99,8 +99,10 @@ const InputFormApi = {
    * @param {string} invoiceId 例: INV-202605-001
    * @param {Array<{itemName, unitPrice, quantity, taxRate}>} items
    * @param {string} [biko] - 備考(任意。freee請求書の備考欄に転記される)
+   * @param {string} [yearMonth] - 対象月 (yyyy-MM)。指定すると 請求ID+対象月 で照合し、
+   *   同一請求IDが対象月違いで複数ある場合の誤マッチを防ぐ
    */
-  submitInvoiceInput: function(invoiceId, items, biko) {
+  submitInvoiceInput: function(invoiceId, items, biko, yearMonth) {
     if (!invoiceId) throw new Error('請求IDが指定されていません');
     if (!Array.isArray(items) || items.length === 0) throw new Error('明細が空です');
 
@@ -122,8 +124,12 @@ const InputFormApi = {
 
     try {
       const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-      const row = allRows.find(r => r['請求ID'] === invoiceId);
-      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}`);
+      const normalizedYm = yearMonth ? normalizeYearMonth(yearMonth) : null;
+      const row = allRows.find(r =>
+        r['請求ID'] === invoiceId &&
+        (normalizedYm === null || normalizeYearMonth(r['対象月']) === normalizedYm)
+      );
+      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}${normalizedYm ? ' (対象月: ' + normalizedYm + ')' : ''}`);
       if (['未入力', '差戻'].indexOf(row['ステータス']) === -1) {
         throw new Error(`既に処理済みです (現在のステータス: ${row['ステータス']})`);
       }
@@ -267,8 +273,8 @@ const InputFormApi = {
 function getMyPendingInvoices() {
   return InputFormApi.getMyPendingInvoices();
 }
-function submitInvoiceInput(invoiceId, items, biko) {
-  return InputFormApi.submitInvoiceInput(invoiceId, items, biko);
+function submitInvoiceInput(invoiceId, items, biko, yearMonth) {
+  return InputFormApi.submitInvoiceInput(invoiceId, items, biko, yearMonth);
 }
 function getLastMonthLineItems(clientId, currentYearMonth) {
   return InputFormApi.getLastMonthLineItems(clientId, currentYearMonth);

@@ -98,8 +98,10 @@ const ApprovalApi = {
 
   /**
    * 単件承認: 入力済 → 承認済
+   * @param {string} invoiceId
+   * @param {string} [yearMonth] - 対象月 (yyyy-MM)。指定すると請求ID+対象月で照合
    */
-  approveInvoice: function(invoiceId) {
+  approveInvoice: function(invoiceId, yearMonth) {
     this.checkAccess();
     if (!invoiceId) throw new Error('請求IDが指定されていません');
 
@@ -108,8 +110,12 @@ const ApprovalApi = {
 
     try {
       const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-      const row = allRows.find(r => r['請求ID'] === invoiceId);
-      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}`);
+      const normalizedYm = yearMonth ? normalizeYearMonth(yearMonth) : null;
+      const row = allRows.find(r =>
+        r['請求ID'] === invoiceId &&
+        (normalizedYm === null || normalizeYearMonth(r['対象月']) === normalizedYm)
+      );
+      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}${normalizedYm ? ' (対象月: ' + normalizedYm + ')' : ''}`);
       const status = String(row['ステータス'] || '').trim();
       if (status !== '入力済') throw new Error(`既に処理済みです (現在のステータス: ${status})`);
 
@@ -128,7 +134,7 @@ const ApprovalApi = {
   /**
    * 差戻: 入力済 → 差戻 + メモ列に理由追記
    */
-  rejectInvoice: function(invoiceId, reason) {
+  rejectInvoice: function(invoiceId, reason, yearMonth) {
     this.checkAccess();
     if (!invoiceId) throw new Error('請求IDが指定されていません');
     const trimmedReason = String(reason || '').trim();
@@ -139,8 +145,12 @@ const ApprovalApi = {
 
     try {
       const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
-      const row = allRows.find(r => r['請求ID'] === invoiceId);
-      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}`);
+      const normalizedYm = yearMonth ? normalizeYearMonth(yearMonth) : null;
+      const row = allRows.find(r =>
+        r['請求ID'] === invoiceId &&
+        (normalizedYm === null || normalizeYearMonth(r['対象月']) === normalizedYm)
+      );
+      if (!row) throw new Error(`請求が見つかりません: ${invoiceId}${normalizedYm ? ' (対象月: ' + normalizedYm + ')' : ''}`);
       const status = String(row['ステータス'] || '').trim();
       if (status !== '入力済') throw new Error(`既に処理済みです (現在のステータス: ${status})`);
 
@@ -180,9 +190,16 @@ const ApprovalApi = {
       const userEmail = Session.getActiveUser().getEmail();
       const now = new Date();
 
-      invoiceIds.forEach(id => {
+      invoiceIds.forEach(item => {
+        // item は文字列(請求ID) または {invoiceId, yearMonth} を許容
+        const id = (item && typeof item === 'object') ? item.invoiceId : item;
+        const ym = (item && typeof item === 'object' && item.yearMonth)
+          ? normalizeYearMonth(item.yearMonth) : null;
         try {
-          const row = allRows.find(r => r['請求ID'] === id);
+          const row = allRows.find(r =>
+            r['請求ID'] === id &&
+            (ym === null || normalizeYearMonth(r['対象月']) === ym)
+          );
           if (!row) throw new Error('請求が見つかりません');
           const status = String(row['ステータス'] || '').trim();
           if (status !== '入力済') throw new Error(`既に処理済みです (現在のステータス: ${status})`);
@@ -281,11 +298,11 @@ const ApprovalApi = {
 function getInvoicesForApproval() {
   return ApprovalApi.getInvoicesForApproval();
 }
-function approveInvoice(invoiceId) {
-  return ApprovalApi.approveInvoice(invoiceId);
+function approveInvoice(invoiceId, yearMonth) {
+  return ApprovalApi.approveInvoice(invoiceId, yearMonth);
 }
-function rejectInvoice(invoiceId, reason) {
-  return ApprovalApi.rejectInvoice(invoiceId, reason);
+function rejectInvoice(invoiceId, reason, yearMonth) {
+  return ApprovalApi.rejectInvoice(invoiceId, reason, yearMonth);
 }
 function bulkApproveAll(invoiceIds) {
   return ApprovalApi.bulkApproveAll(invoiceIds);

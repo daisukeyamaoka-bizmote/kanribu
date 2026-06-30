@@ -367,7 +367,7 @@
         alert('承認失敗: ' + err.message);
         setCardState(card, false);
       })
-      .approveInvoice(inv.invoiceId);
+      .approveInvoice(inv.invoiceId, inv.yearMonth);
   }
 
   function reject(card, inv) {
@@ -390,7 +390,7 @@
         alert('差戻失敗: ' + err.message);
         setCardState(card, false);
       })
-      .rejectInvoice(inv.invoiceId, reason.trim());
+      .rejectInvoice(inv.invoiceId, reason.trim(), inv.yearMonth);
   }
 
   function bulkApprove() {
@@ -399,7 +399,7 @@
 
     document.getElementById('bulkBtn').disabled = true;
     document.getElementById('bulkBtn').textContent = '承認中...';
-    const ids = currentInvoices.map(i => i.invoiceId);
+    const ids = currentInvoices.map(i => ({ invoiceId: i.invoiceId, yearMonth: i.yearMonth }));
 
     google.script.run
       .withSuccessHandler(results => {
