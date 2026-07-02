@@ -23,6 +23,7 @@ function onOpen() {
         .addItem('選択行のPDFをプレビュー', 'previewSelectedRowPdf')
         .addItem('一括メール送付(本番)', 'sendInvoiceMails')
         .addItem('選択行を送付済にする(手動マーク)', 'markSelectedRowAsSent')
+        .addItem('選択行を訂正して再送する準備', 'reissueSelectedRow')
         .addSeparator()
         .addItem('入金消込チェック(手動)', 'manualReconcileCheck')
     )
@@ -107,6 +108,116 @@ function markSelectedRowAsSent() {
     ui.alert(
       '送付済マーク完了',
       `${invoiceId} を「送付済」にマークしました。`,
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * メニューから呼ばれる: 選択行を訂正して再送する準備
+ *
+ * 送付済/発行済 の請求書を修正して出し直すために、
+ * - freee の取引(仕訳)を削除 (freee deal_id があれば)
+ * - シートの freee請求書ID / freee deal_id / 送付完了日時 / 承認情報 をクリア
+ * - ステータスを「差戻」に戻す (オーナーが入力フォームから再入力 → 承認 → 発行 → 送付)
+ * - 旧 freee 請求書は API で削除できないため、番号を案内して手動削除を促す
+ */
+function reissueSelectedRow() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    if (sheet.getName() !== '03_請求一覧') {
+      ui.alert('実行先エラー', '03_請求一覧 シートを開いてから、対象の行を選択して実行してください。', ui.ButtonSet.OK);
+      return;
+    }
+    const row = sheet.getActiveRange().getRow();
+    if (row < 3) {
+      ui.alert('行選択エラー', 'データ行(3行目以降)を選択してください。', ui.ButtonSet.OK);
+      return;
+    }
+
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const col = name => headers.indexOf(name);
+    const need = ['請求ID', '対象月', 'ステータス', 'freee請求書ID', 'freee deal_id', '送付完了日時', '承認者', '承認日時', 'メモ'];
+    for (let i = 0; i < need.length; i++) {
+      if (col(need[i]) < 0) {
+        ui.alert('列エラー', `「${need[i]}」列が見つかりません。`, ui.ButtonSet.OK);
+        return;
+      }
+    }
+
+    const getCell = name => sheet.getRange(row, col(name) + 1);
+    const invoiceId = getCell('請求ID').getValue();
+    const status = String(getCell('ステータス').getValue() || '').trim();
+    const freeeInvoiceId = getCell('freee請求書ID').getValue();
+    const freeeDealId = getCell('freee deal_id').getValue();
+
+    if (['発行済', '送付済'].indexOf(status) === -1) {
+      const proceed = ui.alert(
+        '確認',
+        `現在のステータス: ${status}\n\n通常は「発行済」「送付済」の行を訂正再送します。それでも続けますか?`,
+        ui.ButtonSet.YES_NO
+      );
+      if (proceed !== ui.Button.YES) return;
+    }
+    if (status === '入金済') {
+      ui.alert(
+        '実行できません',
+        '入金済の請求書は訂正再送の対象にできません。\n入金消込との整合が崩れるため、経理・税理士に相談してください。',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+
+    const confirmMsg =
+      `${invoiceId} を訂正して再送する準備をします。\n\n` +
+      `以下を行います:\n` +
+      `1. freeeの取引(仕訳)を削除` + (freeeDealId ? ` (deal ${freeeDealId})` : ' (なし)') + `\n` +
+      `2. シートの freee請求書ID / freee deal_id / 送付完了日時 / 承認情報 をクリア\n` +
+      `3. ステータスを「差戻」に戻す\n\n` +
+      (freeeInvoiceId
+        ? `※ 旧 freee請求書 (ID: ${freeeInvoiceId}) は API で削除できません。\n   後で freee 画面から手動で削除してください。\n\n`
+        : '') +
+      `この後、オーナーが入力フォームから正しい金額で再入力 → 承認 → 一括発行 → 一括メール送付 します。\n\n実行しますか?`;
+    if (ui.alert('訂正再送の準備 確認', confirmMsg, ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+    // 1. freee 取引(仕訳)削除
+    let dealResult = '取引なし';
+    if (freeeDealId) {
+      try {
+        FreeeClient.deleteDeal(freeeDealId);
+        dealResult = `取引 ${freeeDealId} を削除`;
+      } catch (e) {
+        // 既に削除済み等は警告に留め、シート側の初期化は続行する
+        dealResult = `取引削除に失敗(手動確認要): ${e.message}`;
+        Logger.log(`訂正再送: deal削除失敗 ${freeeDealId}: ${e.message}`);
+      }
+    }
+
+    // 2 & 3. シート初期化 + 差戻
+    const timestamp = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+    const existingMemo = String(getCell('メモ').getValue() || '').trim();
+    const memoLine = `[訂正再送 ${timestamp}] 旧freee請求書ID ${freeeInvoiceId || '(なし)'} は手動削除要 / ${dealResult}`;
+    getCell('メモ').setValue(memoLine + (existingMemo ? `\n${existingMemo}` : ''));
+    getCell('freee請求書ID').setValue('');
+    getCell('freee deal_id').setValue('');
+    getCell('送付完了日時').setValue('');
+    getCell('承認者').setValue('');
+    getCell('承認日時').setValue('');
+    getCell('ステータス').setValue('差戻');
+
+    ui.alert(
+      '訂正再送の準備 完了',
+      `${invoiceId} を差戻に戻しました。\n\n` +
+      `${dealResult}\n\n` +
+      (freeeInvoiceId
+        ? `【要対応】freee 画面で旧請求書 (ID: ${freeeInvoiceId}) を手動削除してください。\n\n`
+        : '') +
+      `次の手順:\n` +
+      `1. オーナーが「入力フォームを開く」から正しい内容で再入力・提出\n` +
+      `2. 経理が承認 → 一括発行 → 一括メール送付`,
       ui.ButtonSet.OK
     );
   } catch (e) {

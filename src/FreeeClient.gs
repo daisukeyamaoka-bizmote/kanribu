@@ -42,6 +42,8 @@ const FreeeClient = {
     }
 
     Utilities.sleep(200);
+    // DELETE などは 204 で本文が空のことがある
+    if (!body) return {};
     return JSON.parse(body);
   },
 
@@ -96,6 +98,17 @@ const FreeeClient = {
   createDeal: function(payload) {
     const data = this.request('accounting', 'POST', '/api/1/deals', payload);
     return data.deal;
+  },
+
+  /**
+   * 取引(deal)を削除する (会計API)
+   * 訂正再送時に、旧発行で作られた売掛金/売上の仕訳を取り消すために使う。
+   * @param {number|string} dealId
+   * @return {object} レスポンス(通常は空)
+   */
+  deleteDeal: function(dealId) {
+    const companyId = Config.get('FREEE_COMPANY_ID');
+    return this.request('accounting', 'DELETE', `/api/1/deals/${dealId}?company_id=${companyId}`);
   },
 
   /**
