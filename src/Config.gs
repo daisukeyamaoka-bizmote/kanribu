@@ -21,8 +21,8 @@ const Config = {
       'FREEE_CLIENT_SECRET': 'HiyIvSKAqpv8FW9RFjYxpPEN7rpht3HZWGxED79xx_puGtX8M1hNuc-fztHbgio8zw1dI6Ff5qd_hP_DXNl3kw',
       // 会社情報
       'COMPANY_NAME': 'bizmote株式会社',
-      'COMPANY_ZIP': '160-0023',
-      'COMPANY_ADDRESS': '東京都新宿区西新宿4-8-11 SHINJUKU NEW VILLA 203',
+      'COMPANY_ZIP': '160-0022',
+      'COMPANY_ADDRESS': '東京都新宿区新宿2丁目8番15号 パークフロント新宿 202号室',
       // インボイス制度の適格請求書発行事業者 登録番号(T + 13桁)
       'COMPANY_INVOICE_REGISTRATION_NUMBER': 'T9011001154271',
       'BANK_INFO': 'GMOあおぞらネット銀行 法人営業部 普通 1663349',
