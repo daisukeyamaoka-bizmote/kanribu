@@ -43,10 +43,11 @@ function onOpen() {
         .addItem('4. freee接続テスト', 'testFreeeConnection')
         .addSeparator()
         .addItem('月初トリガーを登録(毎月1日9時)', 'installMonthlyInvoiceTrigger')
-        .addItem('入金消込トリガーを登録(毎月15日9時)', 'installReconcileTriggerMenu')
+        .addItem('未入金アラートトリガーを登録(毎月1日10時)', 'installReconcileTriggerMenu')
         .addSeparator()
         .addItem('Slack Webhook URLを設定', 'setSlackWebhookUrlMenu')
-        .addItem('Slack メンションユーザIDを設定', 'setSlackMentionUserIdMenu')
+        .addItem('Slack メンションユーザIDを設定(送付完了通知)', 'setSlackMentionUserIdMenu')
+        .addItem('Slack メンションユーザIDを設定(未入金アラート)', 'setSlackOverdueMentionUserIdMenu')
         .addItem('Slack通知テスト', 'testSlackNotify')
         .addSeparator()
         .addItem('freee認証リセット', 'resetFreeeOAuth')
@@ -375,6 +376,45 @@ function setSlackMentionUserIdMenu() {
     id
       ? `メンションユーザID を ${id} に設定しました。`
       : 'メンションユーザID を空にしました。',
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * メニューから呼ばれる: 未入金アラート(月初チェック)でメンションする Slack ユーザID を登録
+ */
+function setSlackOverdueMentionUserIdMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const current = Config.getOrDefault('SLACK_OVERDUE_MENTION_USER_ID', '');
+
+  const resp = ui.prompt(
+    'Slack メンションユーザID 設定(未入金アラート)',
+    `現在の値: ${current || '(未設定)'}\n\n` +
+    '毎月1日の未入金アラートでメンション(@通知)する Slack ユーザの Member ID を入力してください\n' +
+    '(例: U01ABCDEFGH)\n\n' +
+    '取得方法: Slack で対象ユーザのプロフィール → その他 → メンバーIDをコピー\n' +
+    '※ 空欄でOKするとメンション無しの通知になります',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const id = String(resp.getResponseText()).trim();
+
+  if (id && !/^[UW][A-Z0-9]{5,}$/.test(id)) {
+    ui.alert(
+      'ID形式エラー',
+      'Slack Member ID は U または W で始まる英数字です(例: U01ABCDEFGH)。\n' +
+      'ユーザ名(@yamaoka 等)ではなく Member ID をコピーしてください。',
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  Config.set('SLACK_OVERDUE_MENTION_USER_ID', id);
+  ui.alert(
+    '保存完了',
+    id
+      ? `未入金アラートのメンションユーザID を ${id} に設定しました。`
+      : '未入金アラートのメンションユーザID を空にしました。',
     ui.ButtonSet.OK
   );
 }

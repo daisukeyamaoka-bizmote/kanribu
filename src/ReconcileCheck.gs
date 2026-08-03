@@ -5,10 +5,11 @@
  * 照会し、入金状況に応じて以下のように更新する:
  *
  * - due_amount === 0 (消込完了) → ステータス「入金済」
- * - 未消込 + 期日超過           → ステータス「未消込警告」 + Slack通知
+ * - 未消込 + 期日超過           → ステータス「未消込警告」 + Slack通知(月初トリガーのみ)
  * - 未消込 + 期日内             → そのまま(状態変えず)
  *
- * 月次トリガー(毎月15日 9:00 JST)で自動実行する想定。
+ * 月次トリガー(毎月1日 10:00 JST、月初請求行作成の後)で自動実行する想定。
+ * 翌月末払いのため、月初時点で前月末期日の未入金が無いか早期発見する狙い。
  * メニューから手動実行も可能。
  */
 const ReconcileCheck = {
@@ -20,8 +21,11 @@ const ReconcileCheck = {
    * 入金消込チェック本体
    * 自前で登録した取引(売掛金)の残額(due_amount)を主の判定材料にする。
    * deal_id が無い旧データのみ invoice.payment_status にフォールバックする。
+   * @param {object} [opts]
+   * @param {boolean} [opts.notifySlack] - true なら期日超過の未入金を Slack 通知する
    */
-  check: function() {
+  check: function(opts) {
+    opts = opts || {};
     const allInvoices = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
     const targets = allInvoices.filter(r => {
       const status = String(r['ステータス'] || '').trim();
@@ -124,6 +128,15 @@ const ReconcileCheck = {
       }
     });
 
+    if (opts.notifySlack && pastDue.length > 0) {
+      const mentionId = Config.getOrDefault('SLACK_OVERDUE_MENTION_USER_ID', '').trim();
+      const mention = mentionId ? `<@${mentionId}> ` : '';
+      const lines = pastDue.map(p =>
+        `- ${p.clientName} ${p.invoiceId} 期日:${p.dueDate} 残¥${p.dueAmount.toLocaleString()}`
+      ).join('\n');
+      Notifier.slack(`${mention}未入金アラート: 期日超過の請求書が ${pastDue.length}件 あります\n${lines}`);
+    }
+
     return {
       checked: targets.length,
       settled: settled,
@@ -134,15 +147,16 @@ const ReconcileCheck = {
   },
 
   /**
-   * 月次トリガー登録 (毎月15日 9:00 JST)
+   * 月次トリガー登録 (毎月1日 10:00 JST。月初請求行作成トリガー(9:00)の後)
+   * 翌月末払いのため、月初時点で前月末期日の未入金を早期検知して Slack 通知する。
    * 既存の同名トリガーは先に削除
    */
   installTrigger: function() {
     const removed = this.removeTrigger();
     ScriptApp.newTrigger(this.TRIGGER_FUNCTION_NAME)
       .timeBased()
-      .onMonthDay(15)
-      .atHour(9)
+      .onMonthDay(1)
+      .atHour(10)
       .inTimezone('Asia/Tokyo')
       .create();
     return { removed: removed, installed: 1 };
@@ -182,7 +196,7 @@ const ReconcileCheck = {
  */
 function checkReconciliationTrigger() {
   try {
-    const result = ReconcileCheck.check();
+    const result = ReconcileCheck.check({ notifySlack: true });
     Logger.log(
       `入金消込トリガー実行: ` +
       `対象${result.checked}件, 消込${result.settled.length}件, ` +

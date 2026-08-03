@@ -37,6 +37,9 @@ const Config = {
       // 送付完了通知でメンションする Slack ユーザID (例: 'U01234567')
       // メニュー「開発者メニュー → Slack メンションユーザIDを設定」から登録する
       'SLACK_MENTION_USER_ID': '',
+      // 未入金アラート(月初チェック)でメンションする Slack ユーザID
+      // メニュー「開発者メニュー → Slack 未入金アラートのメンションユーザIDを設定」から登録する
+      'SLACK_OVERDUE_MENTION_USER_ID': '',
     };
 
     Object.keys(defaults).forEach(key => {
