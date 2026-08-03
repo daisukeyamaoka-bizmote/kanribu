@@ -413,6 +413,122 @@ const InvoiceMail = {
     const date = new Date(y, m + months, 0);
     return Utilities.formatDate(date, 'JST', 'yyyy年MM月dd日');
   },
+
+  OVERDUE_SUBJECT_TEMPLATE: '【ご入金確認のお願い】{年}/{月}分 ご請求書について',
+
+  OVERDUE_BODY_TEMPLATE:
+    '{To担当者名}\n' +
+    '\n' +
+    'いつも大変お世話になっております。\n' +
+    'bizmote株式会社 {送信者表示名}です。\n' +
+    '\n' +
+    '{年}年{月}月分の下記ご請求書につきまして、本日時点でご入金の確認が取れておりません。\n' +
+    'お忙しいところ恐れ入りますが、ご確認いただけますでしょうか。\n' +
+    '行き違いでご入金済みの場合は、本メールにその旨ご返信いただけますと幸いです。\n' +
+    '\n' +
+    '【ご請求内容】\n' +
+    '・件名: {件名}\n' +
+    '・請求書番号: {請求書番号}\n' +
+    '・税込ご請求金額: ¥{税込金額}\n' +
+    '・お支払期日: {期日}\n' +
+    '\n' +
+    '【お振込先】\n' +
+    '{bank_info}\n' +
+    '\n' +
+    'お手数をおかけいたしますが、よろしくお願いいたします。\n' +
+    '\n' +
+    '------------------------\n' +
+    '{COMPANY_NAME}\n' +
+    '{COMPANY_ZIP}\n' +
+    '{COMPANY_ADDRESS}\n' +
+    '------------------------\n',
+
+  /**
+   * 未消込警告(期日超過の未入金)の請求書について、督促メールの Gmail下書きを作成する。
+   * 実送信はしない(実行者が Gmail の下書きフォルダで内容確認 → 手動送信)。
+   * 既に下書き作成済み(督促下書き日時が入っている)行はデフォルトでスキップする。
+   * @param {boolean} [force] - true なら既に下書き済みの行も再作成する
+   * @return {object} {created: [...], skipped: [...]}
+   */
+  createOverdueDrafts: function(force) {
+    const allRows = SheetUtil.readAsObjects(this.INVOICE_SHEET, 1, 3);
+    const targets = allRows.filter(r => String(r['ステータス'] || '').trim() === '未消込警告');
+    if (targets.length === 0) return { created: [], skipped: [] };
+
+    const clients = SheetUtil.readAsObjects(this.CLIENT_MASTER_SHEET, 1, 3);
+    const clientMap = {};
+    clients.forEach(c => clientMap[c['クライアントID']] = c);
+
+    const senderEmail = Config.getOrDefault('PREFERRED_SENDER_EMAIL', '') || Session.getActiveUser().getEmail();
+    const senderName = UserMapping.getDisplayName(senderEmail) || senderEmail.split('@')[0];
+    const forcedCc = Config.getOrDefault('FORCED_CC_EMAIL', '').trim();
+
+    const created = [];
+    const skipped = [];
+
+    targets.forEach(r => {
+      const invoiceId = r['請求ID'];
+      const clientName = (clientMap[r['クライアントID']] || {})['企業名'] || r['クライアントID'];
+
+      if (!force && r['督促下書き日時']) {
+        skipped.push({ invoiceId: invoiceId, clientName: clientName, reason: '下書き作成済み' });
+        return;
+      }
+
+      const client = clientMap[r['クライアントID']] || {};
+      const toAddress = String(client['Toアドレス'] || '').trim();
+      if (!toAddress) {
+        skipped.push({ invoiceId: invoiceId, clientName: clientName, reason: 'Toアドレスが未設定' });
+        return;
+      }
+
+      try {
+        const yearMonth = normalizeYearMonth(r['対象月']);
+        const invoiceSubject = this._buildInvoiceSubject(client['件名テンプレ'] || '', yearMonth);
+        const dueDate = this._dueDateString(yearMonth, client['支払サイト']);
+        const total = Number(r['税込金額']) || 0;
+
+        const subject = this._render(this.OVERDUE_SUBJECT_TEMPLATE, {
+          '{年}': yearMonth.split('-')[0] || '',
+          '{月}': yearMonth.split('-')[1] || '',
+        });
+        const body = this._render(this.OVERDUE_BODY_TEMPLATE, {
+          '{To担当者名}': client['To担当者名'] || `${clientName} ご担当者様`,
+          '{送信者表示名}': senderName,
+          '{年}': yearMonth.split('-')[0] || '',
+          '{月}': yearMonth.split('-')[1] || '',
+          '{件名}': invoiceSubject,
+          '{請求書番号}': r['freee請求書ID'] || invoiceId,
+          '{税込金額}': total.toLocaleString(),
+          '{期日}': dueDate,
+          '{bank_info}': Config.getOrDefault('BANK_INFO', ''),
+          '{COMPANY_NAME}': Config.getOrDefault('COMPANY_NAME', 'bizmote株式会社'),
+          '{COMPANY_ZIP}': Config.getOrDefault('COMPANY_ZIP', ''),
+          '{COMPANY_ADDRESS}': Config.getOrDefault('COMPANY_ADDRESS', ''),
+        });
+
+        const draftOptions = { name: senderName + ' (bizmote株式会社)' };
+        if (forcedCc && forcedCc !== toAddress) draftOptions.cc = forcedCc;
+        // from はエイリアス未登録の場合エラーになるため、実行者のGmailで作成できるよう try/catch する
+        try {
+          GmailApp.createDraft(toAddress, subject, body, Object.assign({ from: senderEmail }, draftOptions));
+        } catch (e) {
+          GmailApp.createDraft(toAddress, subject, body, draftOptions);
+        }
+
+        SheetUtil.updateRow(this.INVOICE_SHEET, r._rowNumber, {
+          '督促下書き日時': new Date(),
+        });
+
+        created.push({ invoiceId: invoiceId, clientName: clientName, to: toAddress });
+      } catch (e) {
+        Logger.log(`督促下書き作成失敗 ${invoiceId}: ${e.message}`);
+        skipped.push({ invoiceId: invoiceId, clientName: clientName, reason: e.message });
+      }
+    });
+
+    return { created: created, skipped: skipped };
+  },
 };
 
 /**
@@ -548,5 +664,52 @@ function previewSelectedRowPdf() {
     ui.showModalDialog(output, '請求書プレビュー(送付されるPDFのレイアウト)');
   } catch (e) {
     ui.alert('PDFプレビュー エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * メニューから呼ばれる: 未入金の督促メール下書きを作成
+ * 実送信はしない。Gmailの下書きフォルダに作成されるだけなので、
+ * 内容を確認してから手動で送信する。
+ */
+function createOverdueEmailDrafts() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const allRows = SheetUtil.readAsObjects(InvoiceMail.INVOICE_SHEET, 1, 3);
+    const overdueCount = allRows.filter(r => String(r['ステータス'] || '').trim() === '未消込警告').length;
+    if (overdueCount === 0) {
+      ui.alert('督促メール下書き作成', '未消込警告(期日超過の未入金)の請求書はありません。', ui.ButtonSet.OK);
+      return;
+    }
+
+    const alreadyDrafted = allRows.filter(r =>
+      String(r['ステータス'] || '').trim() === '未消込警告' && r['督促下書き日時']
+    ).length;
+
+    let force = false;
+    if (alreadyDrafted > 0) {
+      const proceed = ui.alert(
+        '確認',
+        `${overdueCount}件中 ${alreadyDrafted}件 は既に下書き作成済みです。\n\n` +
+        `「はい」: 未作成分だけ作成\n「いいえ」: 中止`,
+        ui.ButtonSet.YES_NO
+      );
+      if (proceed !== ui.Button.YES) return;
+    }
+
+    const result = InvoiceMail.createOverdueDrafts(force);
+
+    let msg = `作成: ${result.created.length}件\n` +
+              `スキップ: ${result.skipped.length}件\n\n` +
+              `Gmailの「下書き」フォルダで内容を確認してから、手動で送信してください。`;
+    if (result.created.length > 0) {
+      msg += '\n\n[下書き作成]\n' + result.created.map(c => `- ${c.clientName} → ${c.to}`).join('\n');
+    }
+    if (result.skipped.length > 0) {
+      msg += '\n\n[スキップ]\n' + result.skipped.map(s => `- ${s.clientName}: ${s.reason}`).join('\n');
+    }
+    ui.alert('督促メール下書き作成 完了', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('督促メール下書き作成 エラー', e.message, ui.ButtonSet.OK);
   }
 }

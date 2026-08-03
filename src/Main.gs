@@ -21,6 +21,7 @@ function onOpen() {
         .addItem('4. 一括メール送付(取引先へ)', 'sendInvoiceMails')
         .addSeparator()
         .addItem('入金消込チェック(手動)', 'manualReconcileCheck')
+        .addItem('未入金の督促メール下書きを作成', 'createOverdueEmailDrafts')
         .addSeparator()
         .addItem('選択行を訂正して再送する', 'reissueSelectedRow')
         .addItem('選択行を送付済にする(手動)', 'markSelectedRowAsSent')
@@ -230,6 +231,7 @@ function setupInitialConfig() {
   const lineSheetCreated = InvoiceFlow.ensureInvoiceLineSheet();
   const mappingCreated = UserMapping.ensureSheet();
   const bikoCreated = InvoiceFlow.ensureBikoColumn();
+  const overdueDraftColCreated = InvoiceFlow.ensureOverdueDraftColumn();
 
   let msg = 'スクリプトプロパティに設定値を保存しました。\n';
   msg += lineSheetCreated
@@ -241,6 +243,9 @@ function setupInitialConfig() {
   msg += bikoCreated
     ? '03_請求一覧 に「備考」列を追加しました。\n'
     : '03_請求一覧 の「備考」列は既に存在します。\n';
+  msg += overdueDraftColCreated
+    ? '03_請求一覧 に「督促下書き日時」列を追加しました。\n'
+    : '03_請求一覧 の「督促下書き日時」列は既に存在します。\n';
   msg += '\n未認証の場合は「2. freee認証開始」を実行してください。';
 
   SpreadsheetApp.getUi().alert(

@@ -75,17 +75,33 @@ const InvoiceFlow = {
    * @return {boolean} 新規追加した場合true
    */
   ensureBikoColumn: function() {
+    return this._ensureColumn('備考', '任意', 220);
+  },
+
+  /**
+   * 03_請求一覧 に「督促下書き日時」列を末尾に追加(既に存在すればスキップ)
+   * @return {boolean} 新規追加した場合true
+   */
+  ensureOverdueDraftColumn: function() {
+    return this._ensureColumn('督促下書き日時', '自動', 160);
+  },
+
+  /**
+   * 03_請求一覧 の末尾に列を追加する共通処理(既に存在すればスキップ)
+   * @private
+   */
+  _ensureColumn: function(name, subLabel, width) {
     const sheet = SheetUtil.getSheet(this.INVOICE_SHEET);
     const lastCol = sheet.getLastColumn();
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    if (headers.indexOf('備考') !== -1) return false;
+    if (headers.indexOf(name) !== -1) return false;
 
     const newCol = lastCol + 1;
-    sheet.getRange(1, newCol).setValue('備考')
+    sheet.getRange(1, newCol).setValue(name)
       .setFontWeight('bold').setBackground('#1E3A5F').setFontColor('white').setHorizontalAlignment('center');
-    sheet.getRange(2, newCol).setValue('任意')
+    sheet.getRange(2, newCol).setValue(subLabel)
       .setFontStyle('italic').setFontColor('#666666').setFontSize(10);
-    sheet.setColumnWidth(newCol, 220);
+    sheet.setColumnWidth(newCol, width);
     return true;
   },
 
